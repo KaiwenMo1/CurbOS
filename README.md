@@ -1,15 +1,13 @@
 # CurbOS
 
-CurbOS is an evidence-aware, street-parking-first application under active development. The current foundation contains no parking inventory, legal recommendations, occupancy claims, map tiles, or user location collection.
+CurbOS is an evidence-aware, street-parking-first application under active development. The current foundation has no parking inventory, legal recommendations, occupancy claims, or user location collection.
 
 ## Current capability
 
 - A Go HTTP API with liveness and PostgreSQL readiness endpoints.
-- A React/TypeScript/Vite web shell with an explicit **No verified parking data available** state.
+- A responsive React/TypeScript/Vite map shell with Going Home and Going Out modes, optional MapLibre rendering, and an explicit **No verified parking data available.** state.
 - A local PostgreSQL/PostGIS service with a Goose migration baseline.
 - Reproducible formatting, linting, testing, type-checking, build, and CI commands.
-
-MapLibre is planned for PR-04.
 
 ## Prerequisites
 
@@ -61,7 +59,17 @@ Run the frontend development server in another terminal:
 npm --prefix apps/web run dev
 ```
 
-Vite prints the local URL. The page must state that no verified parking data is available; it must not display parking pins or imply coverage.
+Vite prints the local URL. The web shell runs independently of the API and database. Choosing a trip mode changes the on-screen priorities. Both modes show **No verified parking data available.**
+
+### Optional basemap
+
+Leave `VITE_MAP_STYLE_URL` unset for the default **Basemap not configured** view. It starts no MapLibre renderer and makes no external map requests.
+
+To enable a basemap, copy `apps/web/.env.example` to the ignored `apps/web/.env.local` and set `VITE_MAP_STYLE_URL` to an approved MapLibre Style Specification JSON URL. Use an absolute HTTPS URL or a root-relative path on the same origin, such as `/basemap/style.json` if you serve an approved style there. Restart Vite or rebuild the frontend after changing this value. Vite exposes `VITE_` variables to the browser, so keep credentials, private tokens, and signed URLs out of this setting and all style resources.
+
+Review the style and each resource it references before enabling it. The browser fetches the style, source metadata, tiles, sprites, and fonts directly when needed. Provider requests expose the viewer's IP address and can reveal the viewed map area. Confirm that each provider permits this use, ensure its required attribution appears through MapLibre's attribution control, and check CORS and any deployed Content Security Policy for the approved origins, including support for the same-origin MapLibre worker.
+
+If the configured basemap cannot initialize within 15 seconds, fails to load, reports a worker failure, or loses its WebGL2 context, the shell shows **Map rendering unavailable**. Check WebGL2 support, the worker request, the style URL, resource availability, and CORS, then reload. The parking-data notice appears above the map in every basemap state.
 
 ## API configuration and health contract
 

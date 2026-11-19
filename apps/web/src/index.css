@@ -1,6 +1,16 @@
 :root {
-  color: #172019;
-  background: #f3f1e8;
+  color-scheme: light dark;
+  --page: light-dark(#f3f1e8, #191e1a);
+  --surface: light-dark(#faf9f4, #222a23);
+  --map-surface: light-dark(#e4e7db, #272f28);
+  --ink: light-dark(#172019, #f0f2e9);
+  --muted: light-dark(#505b51, #bac5b9);
+  --line: light-dark(#c5cbbf, #465147);
+  --accent: light-dark(#386043, #a3c9a7);
+  --selection: light-dark(#dde8d9, #334737);
+
+  color: var(--ink);
+  background: var(--page);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -14,109 +24,204 @@
 
 body {
   margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-a {
-  color: inherit;
-}
-
-.app-shell {
-  display: grid;
-  min-height: 100vh;
-  grid-template-rows: auto 1fr auto;
-}
-
-.site-header,
-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.25rem clamp(1.25rem, 4vw, 4rem);
 }
 
 .site-header {
-  border-bottom: 1px solid #c8c6bb;
+  display: flex;
+  align-items: center;
+  min-height: 3.5rem;
+  padding-inline: clamp(1rem, 3vw, 3rem);
+  border-bottom: 1px solid var(--line);
+}
+
+.skip-link {
+  position: absolute;
+  top: 0.375rem;
+  left: 1rem;
+  z-index: 1;
+  padding: 0.625rem;
+  border-radius: 0.375rem;
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.skip-link:not(:focus) {
+  clip-path: inset(50%);
 }
 
 .wordmark {
-  font-size: 1.125rem;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: inherit;
+  font-size: 1.25rem;
   font-weight: 750;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.04em;
   text-decoration: none;
 }
 
-.milestone,
-footer {
-  color: #586059;
-  font-size: 0.8125rem;
+.workspace {
+  padding: clamp(1rem, 3vw, 2.25rem) clamp(1rem, 3vw, 3rem);
 }
 
-.empty-state {
-  align-self: center;
-  width: min(100% - 2.5rem, 54rem);
-  margin: 4rem auto;
-}
-
-.eyebrow {
-  margin: 0 0 1rem;
-  color: #47684f;
-  font-size: 0.75rem;
+.workspace h1 {
+  margin: 0;
+  font-size: clamp(1.6rem, 3vw, 2rem);
   font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
 }
 
-h1 {
-  max-width: 13ch;
-  margin: 0;
-  font-size: clamp(2.75rem, 9vw, 6rem);
-  font-weight: 650;
-  letter-spacing: -0.065em;
-  line-height: 0.92;
-}
-
-.summary {
-  max-width: 42rem;
-  margin: 2rem 0 0;
-  color: #465048;
-  font-size: clamp(1.05rem, 2vw, 1.35rem);
-  line-height: 1.55;
-}
-
-.scope-card {
-  margin-top: 3rem;
-  padding: 1.5rem;
-  border: 1px solid #c8c6bb;
-  background: #e7e5da;
-}
-
-.scope-card h2 {
-  margin: 0;
-  font-size: 0.875rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.scope-card ul {
-  display: grid;
-  gap: 0.75rem;
-  margin: 1.25rem 0 0;
-  padding-left: 1.25rem;
+.data-status {
+  margin: 0.375rem 0 1.125rem;
+  color: var(--muted);
+  font-size: 0.9375rem;
+  font-weight: 600;
   line-height: 1.5;
 }
 
-footer {
-  border-top: 1px solid #c8c6bb;
+.workspace-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 23%);
+  align-items: start;
+  gap: clamp(1rem, 2vw, 1.5rem);
 }
 
-@media (max-width: 36rem) {
-  .milestone {
-    display: none;
+.map-viewport {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: max(28rem, calc(100svh - 13.25rem));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--map-surface);
+}
+
+/* MapLibre adds its own position rule to this element. */
+.map-viewport > .map-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.map-canvas[inert] {
+  visibility: hidden;
+}
+
+.map-viewport .maplibregl-ctrl-zoom-in,
+.map-viewport .maplibregl-ctrl-zoom-out {
+  width: 44px;
+  height: 44px;
+}
+
+.map-viewport:has(.maplibregl-canvas:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.map-message {
+  position: relative;
+  width: min(100%, 24rem);
+  padding: 1rem;
+  text-align: center;
+}
+
+.map-message p {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 650;
+}
+
+.map-message:empty {
+  position: absolute;
+  padding: 0;
+  pointer-events: none;
+}
+
+.map-message p + p {
+  margin-top: 0.5rem;
+  color: var(--muted);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.control-panel {
+  padding: clamp(1rem, 2vw, 1.5rem);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+
+.control-panel fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.control-panel legend {
+  padding: 0;
+  font-size: 1.125rem;
+  font-weight: 650;
+}
+
+.mode-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.mode-option {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 44px;
+  padding: 0.5rem 0.375rem;
+  border: 1px solid var(--line);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.mode-option:has(:checked) {
+  border-color: var(--accent);
+  background: var(--selection);
+}
+
+.mode-option:hover {
+  border-color: var(--accent);
+}
+
+.mode-option input {
+  flex: none;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.mode-option:has(:focus-visible),
+.wordmark:focus-visible,
+.skip-link:focus-visible,
+.control-panel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.control-panel p {
+  margin: 0.625rem 0 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 48rem) {
+  .workspace-layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .empty-state {
-    margin-block: 2.5rem;
+  .map-viewport {
+    min-height: clamp(17rem, 48svh, 28rem);
   }
 }
