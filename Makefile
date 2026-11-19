@@ -1,4 +1,4 @@
-.PHONY: bootstrap fmt fmt-check lint typecheck test build check
+.PHONY: bootstrap fmt fmt-check lint typecheck test build check db-migrate db-status db-test
 
 bootstrap:
 	npm --prefix apps/web ci
@@ -31,3 +31,12 @@ build:
 	npm --prefix apps/web run build
 
 check: fmt-check lint typecheck test build
+
+db-migrate:
+	bash db/goose.sh up
+
+db-status:
+	bash db/goose.sh status
+
+db-test:
+	bash tests/db/smoke.sh

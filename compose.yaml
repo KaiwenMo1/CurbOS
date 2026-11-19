@@ -1,0 +1,31 @@
+name: curbos-dev
+
+services:
+  db:
+    image: postgis/postgis:17-3.6@sha256:1ac10b2551ba84ae05db8e7da477afcd0a3fede99bcb7705da2ee157390cb095
+    environment:
+      POSTGRES_DB: curbos
+      POSTGRES_USER: curbos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the local .env file}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    ports:
+      - "127.0.0.1:${CURBOS_DB_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # Leave extension installation to Goose instead of the image's init scripts.
+    tmpfs:
+      - /docker-entrypoint-initdb.d
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          PGPASSWORD="$${POSTGRES_PASSWORD}" psql -X -w -h 127.0.0.1
+          -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+          -v ON_ERROR_STOP=1 -Atqc 'SELECT 1' >/dev/null
+      interval: 2s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  postgres-data:
