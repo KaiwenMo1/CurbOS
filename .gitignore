@@ -1,0 +1,25 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Go build output
+backend/bin/
+*.test
+coverage.out
+
+# Node/Vite output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local logs and temporary files
+*.log
+*.tmp

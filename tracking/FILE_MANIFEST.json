@@ -1,7 +1,7 @@
 {
-  "version": "1.2",
+  "version": "1.3",
   "built_on": "2026-11-18",
-  "status": "planning only; M1 not yet coded",
+  "status": "CurbOS Master Pack v1.3 planning baseline; excludes later implementation files",
   "files": [
     {
       "path": "AGENTS.md",
@@ -10,8 +10,8 @@
     },
     {
       "path": "README_START_HERE.md",
-      "sha256": "88ace1edbc3c92d9a7fb0912cb45fe62a42518b9f1dbcf39158f6e189ef2ccb9",
-      "bytes": 2918
+      "sha256": "ab77000e8415e522b9c78aec7c56cf2261fc99e52e3ff00b97cebd06889c0bb5",
+      "bytes": 3246
     },
     {
       "path": "docs/adr/ADR-028_VALIDATED_STAGING_ATOMIC_PUBLICATION.md",
@@ -22,6 +22,11 @@
       "path": "docs/architecture/DECISION_REGISTER.md",
       "sha256": "7b09b731728cd1047faded72025be70ab4f239df39a8f5bf14fd97b51becc2e7",
       "bytes": 2993
+    },
+    {
+      "path": "docs/codex/CODEX_START_HERE.md",
+      "sha256": "3be3733a89ad71c6730b7e883b5b63bdf06e53ef355ddc652761de8c27fe6224",
+      "bytes": 6934
     },
     {
       "path": "docs/codex/M1_FIRST_PR_TASKS.md",
@@ -70,8 +75,8 @@
     },
     {
       "path": "docs/research/M0_05_PILOT_SHORTLIST_2026-11-18.md",
-      "sha256": "1ffc892695a280ee2a8b5592e57089d5f6ebf6735c29a5cfbf4d65b1a33f588b",
-      "bytes": 5603
+      "sha256": "fc92cb9eac27775bfbf7ac433837fba7650780ee3065ec437d17d04fe118d106",
+      "bytes": 5598
     },
     {
       "path": "docs/research/M0_06_CODE_THE_CURB_DISCOVERY_2026-11-18.md",
@@ -80,8 +85,8 @@
     },
     {
       "path": "docs/research/M0_EXECUTION_REPORT_2026-11-17.md",
-      "sha256": "7501f9322a6a7fd70a90c9d3ca36c00408c03050a5948921b475d8c218e837a1",
-      "bytes": 5612
+      "sha256": "f072766a5d428cc4ecdb12eabd9964c86847c19862b814003daee21bed59854f",
+      "bytes": 5630
     },
     {
       "path": "tools/m0/M0_04_BLOCK_FACE_AUDIT_TEMPLATE.csv",
@@ -90,8 +95,8 @@
     },
     {
       "path": "tools/m0/README_M0_AUDIT.md",
-      "sha256": "5a7569a3c83767a35ddacd49ef843bd772db0f83fe53d8450d3c9c8425be1365",
-      "bytes": 588
+      "sha256": "60a1695bbf182109f566e26857436d750948725893d6fdcbffcfb9ded471798f",
+      "bytes": 638
     },
     {
       "path": "tools/m0/fixtures/inventory.csv",

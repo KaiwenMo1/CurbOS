@@ -41,7 +41,7 @@
 ## Reproduction instructions (network-enabled environment)
 
 ```bash
-python3 m0_meter_audit.py --fetch \
+python3 tools/m0/m0_meter_audit.py --fetch \
   --inventory inventory.csv --occupancy occupancy.csv \
   --inventory-limit 40000 --occupancy-limit 10000 \
   --output m0_audit_results.json
@@ -52,7 +52,7 @@ The script sets its snapshot reference time after download; for a rigorous snaps
 When APIs cannot be fetched, export both official CSVs manually using the portal and run:
 
 ```bash
-python3 m0_meter_audit.py \
+python3 tools/m0/m0_meter_audit.py \
   --inventory path/to/ladot_inventory.csv \
   --occupancy path/to/ladot_occupancy.csv \
   --reference-time 2026-11-17T09:05:00Z \

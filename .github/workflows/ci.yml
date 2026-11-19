@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "m1/**"
+
+permissions:
+  contents: read
+
+jobs:
+  foundation:
+    name: Foundation checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.1.0
+        with:
+          go-version-file: .go-version
+          cache-dependency-path: backend/go.mod
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Verify pinned toolchains
+        shell: bash
+        run: |
+          expected_go="go$(<.go-version)"
+          expected_node="v$(<.nvmrc)"
+          expected_npm="$(node -p 'require("./apps/web/package.json").packageManager')"
+          actual_go="$(go env GOVERSION)"
+          actual_node="$(node --version)"
+          actual_npm="npm@$(npm --version)"
+
+          printf 'Expected %s %s %s\n' "$expected_go" "$expected_node" "$expected_npm"
+          printf 'Found    %s %s %s\n' "$actual_go" "$actual_node" "$actual_npm"
+          [[ "$actual_go" == "$expected_go" &&
+             "$actual_node" == "$expected_node" &&
+             "$actual_npm" == "$expected_npm" ]]
+
+      - name: Install frontend dependencies
+        run: npm --prefix apps/web ci
+
+      - name: Run foundation quality gate
+        run: make check

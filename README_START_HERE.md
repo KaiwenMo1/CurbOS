@@ -27,4 +27,4 @@
 - **Verified parking recommendations:** NOT ready; separate M3 legality evidence gate required.
 
 ## To resume in another chat
-Upload this ZIP, say: "Continue CurbOS from Master v1.2. Read README_START_HERE.md, decision register and AGENTS.md. Do not change ADRs without approval. Start with M1 PR-01 only when I authorize." All paths in this archive are relative to repo root; when coding begins, reconcile them with actual repository contents rather than blindly overwriting.
+Upload this ZIP, say: "Continue CurbOS from Master v1.3. Read README_START_HERE.md, decision register and AGENTS.md. Do not change ADRs without approval. Start with M1 PR-01 only when I authorize." All paths in this archive are relative to repo root; when coding begins, reconcile them with actual repository contents rather than blindly overwriting.

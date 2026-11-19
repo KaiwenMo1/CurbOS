@@ -62,7 +62,7 @@ A score is NOT allowed if key data coverage is unavailable. Never substitute arb
 - Pilot decision: PENDING; Westwood is research priority, not GO
 
 ## Runbook next actions
-1. In a networked development environment execute the existing `curbos_design/m0_meter_audit.py --fetch` utility; preserve raw snapshot date, metadata and output.
+1. In a networked development environment execute the existing `tools/m0/m0_meter_audit.py --fetch` utility; preserve raw snapshot date, metadata and output.
 2. Aggregate joined space counts and fresh observations by region; use actual coordinates within LA boundaries and official district layers.
 3. Obtain authoritative street block-face geometry and district boundaries; create deterministic set of 20 block-faces following the strata.
 4. Cross-check official posted sweeping and PPD against current signage and any official block-level restrictions; record reviewer, dates, evidence, and UNKNOWN values.
