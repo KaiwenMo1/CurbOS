@@ -2,6 +2,11 @@
 set -euo pipefail
 set +x
 
+case "${1:-db}" in
+  db|api) mode=${1:-db} ;;
+  *) printf 'Usage: %s [db|api]\n' "$0" >&2; exit 2 ;;
+esac
+
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 COMPOSE_PROJECT_NAME="curbos-db-test-$(openssl rand -hex 8)"
 POSTGRES_PASSWORD="$(openssl rand -hex 24)"
@@ -65,6 +70,20 @@ fi
 require_equal 1 "$(sql "SELECT count(*) FROM pg_available_extensions WHERE name = 'postgis';")"
 require_equal 0 "$(sql "SELECT count(*) FROM pg_extension WHERE extname = 'postgis';")"
 bash db/goose.sh validate
+if [[ "$mode" == api ]]; then
+  endpoint=$("${compose[@]}" port db 5432)
+  require_equal 127.0.0.1 "${endpoint%:*}"
+  container=$("${compose[@]}" ps -q db)
+  (
+    cd backend
+    unset PGSERVICE PGSERVICEFILE PGOPTIONS
+    export CURBOS_API_INTEGRATION=1 CURBOS_TEST_DB_CONTAINER="$container"
+    export CURBOS_DATABASE_URL="postgres://curbos@$endpoint/curbos?sslmode=disable"
+    export CURBOS_READY_TIMEOUT=1s CURBOS_SHUTDOWN_TIMEOUT=5s CURBOS_HTTP_ADDR=127.0.0.1:8080
+    export PGPASSWORD="$POSTGRES_PASSWORD"
+    go test -race -count=1 -v -run '^TestAPIIntegration$' ./cmd/api
+  )
+fi
 PGSERVICE=curbos-missing-service PGSERVICEFILE=/dev/null PGOPTIONS='-c search_path=pg_catalog' bash db/goose.sh up
 bash db/goose.sh status
 require_equal public "$(sql "SELECT extnamespace::regnamespace FROM pg_extension WHERE extname = 'postgis';")"

@@ -1,0 +1,54 @@
+openapi: 3.1.0
+info:
+  title: CurbOS operational API
+  version: 0.1.0
+  description: >-
+    These routes accept GET. Other methods return 405 with Allow: GET.
+    M1 readiness covers the PostgreSQL baseline.
+paths:
+  /healthz:
+    get:
+      operationId: getLiveness
+      summary: Check API process liveness
+      responses:
+        '200':
+          description: The API process can serve HTTP.
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, const: ok}
+  /readyz:
+    get:
+      operationId: getReadiness
+      summary: Check the PostgreSQL and PostGIS baseline
+      responses:
+        '200':
+          description: The baseline check succeeded within its deadline.
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, const: ready}
+        '503':
+          description: PostgreSQL could not complete the check or the baseline is missing.
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, const: not_ready}
