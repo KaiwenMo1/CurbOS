@@ -1,0 +1,56 @@
+{
+  "reference_time_utc": "2026-11-17T09:05:00+00:00",
+  "inventory": {
+    "rows": 2,
+    "unique_nonempty_spaceids": 2,
+    "empty_spaceids": 0,
+    "duplicate_id_extra_rows": 0,
+    "blank_latlng_rows": 0,
+    "unparseable_nonblank_latlng_rows": 0,
+    "outside_broad_regional_bbox_rows": 0,
+    "blank_blockface_rows": 0,
+    "rate_types": {
+      "FLAT": 2
+    }
+  },
+  "occupancy": {
+    "rows": 2,
+    "unique_nonempty_spaceids": 2,
+    "empty_spaceids": 0,
+    "duplicate_id_extra_rows": 0,
+    "occupancy_states": {
+      "VACANT": 1,
+      "OCCUPIED": 1
+    },
+    "missing_timestamps": 0,
+    "invalid_timestamps": 0,
+    "future_timestamps": 0
+  },
+  "join": {
+    "matched_unique_spaceids": 1,
+    "unmatched_occupancy_unique_spaceids": 1,
+    "occupancy_to_inventory_match_pct": 50.0,
+    "inventory_sensor_coverage_pct": 50.0
+  },
+  "freshness_all_occupancy_rows": {
+    "valid_nonfuture_timestamp_rows": 2,
+    "p50_age_min": 20.0,
+    "p90_age_min": 32.0,
+    "p95_age_min": 33.5,
+    "max_age_min": 35.0,
+    "share_of_all_occupancy_rows_at_most_min_pct": {
+      "5": 50.0,
+      "15": 50.0,
+      "60": 100.0
+    }
+  },
+  "caveats": [
+    "Snapshot ages are relative to reference time and depend on provider timestamp semantics.",
+    "Missing or invalid timestamps are excluded from age percentiles, but counted against shares of all occupancy rows.",
+    "Coverage rates are not citywide if files are partial.",
+    "SpaceID equality is exact after trimming whitespace; additional mapping checks may be needed.",
+    "The regional coordinate sanity bounding box is not a City of LA polygon and cannot validate jurisdiction.",
+    "No legal parking eligibility or price accuracy can be concluded from this audit."
+  ],
+  "audit_mode": "sample_or_unverified_scope"
+}

@@ -1,0 +1,3 @@
+spaceid,blockface,metertype,ratetype,raterange,timelimit,latlng
+A,100 SAMPLE ST,SINGLE,FLAT,2.00,2HR,"(34.0,-118.0)"
+B,200 SAMPLE ST,SINGLE,FLAT,2.00,2HR,"(34.1,-118.1)"
