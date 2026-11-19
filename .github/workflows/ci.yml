@@ -24,7 +24,7 @@ jobs:
         uses: actions/setup-go@v7.1.0
         with:
           go-version-file: .go-version
-          cache-dependency-path: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
       - name: Set up Node.js
         uses: actions/setup-node@v7.1.0
@@ -68,7 +68,9 @@ jobs:
         uses: actions/setup-go@v7.1.0
         with:
           go-version-file: .go-version
-          cache-dependency-path: db/goose.sh
+          cache-dependency-path: |
+            backend/go.sum
+            db/goose.sh
 
-      - name: Run database integration checks
-        run: make db-test
+      - name: Run database and API integration checks
+        run: make api-test
