@@ -168,6 +168,10 @@ Run `make api-test` to include the real HTTP lifecycle test in that same disposa
 
 The pointer and audit tables define storage for a future publication workflow. Public eligibility, source bundle validation, frozen-data and audit immutability, operator authorization, and compare-and-swap activation are later gates.
 
+### Offline CDS capture
+
+M2 PR-02 verifies a local manifest and captures DS13 Zones and DS11 Policies, with DS12 Areas optional. It records provenance in PostgreSQL and writes deterministic private staging and QA files. The test gate uses synthetic fixtures in a disposable database. [Setup, usage and recovery](data/cds_capture/README.md)
+
 ### Browser-to-database quality gate
 
 Install dependencies with `make bootstrap`. Then install Chromium for the pinned Playwright version and run the complete local integration path. On Linux, install the browser's system libraries with Playwright's `--with-deps` option if your environment needs them.

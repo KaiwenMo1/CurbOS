@@ -86,3 +86,13 @@ jobs:
 
       - name: Run database, API and browser integration checks
         run: make e2e-test
+
+      - name: Set up offline capture test environment
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cds-venv"
+          "$RUNNER_TEMP/cds-venv/bin/python" -m pip install -r data/cds_capture/requirements-test.txt
+
+      - name: Run synthetic offline capture checks
+        run: |
+          make cds-lint RUFF="$RUNNER_TEMP/cds-venv/bin/ruff"
+          make cds-test PYTHON="$RUNNER_TEMP/cds-venv/bin/python"
