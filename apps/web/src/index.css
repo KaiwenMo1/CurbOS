@@ -216,6 +216,39 @@ body {
   line-height: 1.5;
 }
 
+.backend-status {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.backend-status h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.backend-status button {
+  min-height: 44px;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--accent);
+  border-radius: 0.375rem;
+  color: var(--ink);
+  background: var(--selection);
+  font: inherit;
+}
+
+.backend-status button[aria-disabled="true"] {
+  color: var(--muted);
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+.backend-status button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 @media (max-width: 48rem) {
   .workspace-layout {
     grid-template-columns: minmax(0, 1fr);

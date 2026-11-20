@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { BackendStatus } from './BackendStatus'
 import { MapViewport } from './MapViewport'
 
 const tripModes = [
@@ -48,6 +49,7 @@ function App() {
               </div>
               <p id="mode-description" aria-live="polite">{mode.description}</p>
             </fieldset>
+            <BackendStatus />
           </section>
         </div>
       </main>

@@ -5,7 +5,7 @@ CurbOS is an evidence-aware, street-parking-first application under active devel
 ## Current capability
 
 - A Go HTTP API with liveness and PostgreSQL readiness endpoints.
-- A responsive React/TypeScript/Vite map shell with Going Home and Going Out modes, optional MapLibre rendering, and an explicit **No verified parking data available.** state.
+- A responsive React/TypeScript/Vite map shell with Going Home and Going Out modes, optional MapLibre rendering, and a live backend readiness check. **No verified parking data available.** remains visible in every backend state.
 - A local PostgreSQL/PostGIS service with a Goose migration baseline.
 - Reproducible formatting, linting, testing, type-checking, build, and CI commands.
 
@@ -35,19 +35,29 @@ make check
 
 If you use NVM, load it in your shell before running the setup commands. With the default NVM install location, run `source "$HOME/.nvm/nvm.sh"`. Other Node installations work if they provide the pinned versions. Confirm `go version`, `node --version`, and `npm --version` match the prerequisites before running the quality gate.
 
-The web shell can run independently. Start and migrate the database below to exercise the API's ready state.
+The web shell starts independently and reports the result of its readiness request. Follow the runbook below to exercise the complete local stack.
 
 ## Run the foundation
 
-Start the [local database](#local-postgresql-and-postgis) and apply its migration first. Then run the API from the repository root. This example reads the password from the running local container and passes it through the environment.
+Configure the ignored root `.env` first, then run database startup and migration from the repository root. [Local PostgreSQL and PostGIS](#local-postgresql-and-postgis)
+
+```bash
+docker compose -f compose.yaml up -d --wait --wait-timeout 90 db
+make db-migrate
+```
+
+Start the Go API in a separate terminal from the repository root. The command passes the development password from the running container through the process environment.
 
 ```bash
 (
   set -e
+  set +x
+  unset PGSERVICE PGSERVICEFILE PGOPTIONS
   endpoint=$(docker compose -f compose.yaml port db 5432)
   PGPASSWORD=$(docker compose -f compose.yaml exec -T db printenv POSTGRES_PASSWORD)
   export PGPASSWORD
   export CURBOS_DATABASE_URL="postgres://curbos@$endpoint/curbos?sslmode=disable"
+  export CURBOS_HTTP_ADDR=127.0.0.1:8080
   cd backend
   go run ./cmd/api
 )
@@ -56,10 +66,20 @@ Start the [local database](#local-postgresql-and-postgis) and apply its migratio
 Run the frontend development server in another terminal:
 
 ```bash
-npm --prefix apps/web run dev
+npm --prefix apps/web run dev -- --host 127.0.0.1
 ```
 
-Vite prints the local URL. The web shell runs independently of the API and database. Choosing a trip mode changes the on-screen priorities. Both modes show **No verified parking data available.**
+Open the local URL printed by Vite. The browser sends one same-origin `GET /readyz` request on load. Vite forwards that path to Go on `http://127.0.0.1:8080`. Go checks the PostgreSQL, PostGIS, and Goose baseline and the panel displays **Backend ready** when the check succeeds. The panel shows **Backend unavailable** for a failed database check or a server error, and **Backend connection error** for a failed connection, timeout, or unexpected response. Use **Check again** after fixing an outage. Each check has a six-second browser deadline.
+
+To use a different Go port, change `CURBOS_HTTP_ADDR` in the API terminal and set the matching `CURBOS_DEV_API_ORIGIN=http://127.0.0.1:<port>` in the frontend terminal or `apps/web/.env.local`. Restart Vite after changing it. Vite validates the origin at startup and keeps it on the server side. The proxy accepts only `127.0.0.1` with an explicit HTTP port. Keep database credentials in the API terminal.
+
+To exercise a database outage, run these steps against your local development project while Go and Vite stay running.
+
+1. Run `docker compose -f compose.yaml stop db` and select **Check again**. Expect **Backend unavailable** with a database message, and **No verified parking data available.** above the map.
+2. Run `docker compose -f compose.yaml up -d --wait --wait-timeout 90 db` and select **Check again**. Expect **Backend ready** on the same page.
+3. Press Ctrl+C in the Vite and Go terminals to stop them. Run `docker compose -f compose.yaml down` to stop the database and retain its named volume.
+
+For a connection error, first check `curl -i http://127.0.0.1:8080/readyz`, then `/readyz` at the Vite origin. The expected ready response is HTTP 200 with JSON `{"status":"ready"}`. An HTML response usually indicates a missing proxy route. Serve a production build behind a same-origin `/readyz` route to Go if deploying it later. Vite's development and preview proxies are for local use.
 
 ### Optional basemap
 
@@ -138,7 +158,20 @@ Checkouts using the default `curbos-dev` project on the same Docker engine share
 
 Run the database integration check with `make db-test`. It requires Bash, Go, Docker Compose and OpenSSL. It uses an isolated project with a random local password, an ephemeral loopback port, and a disposable named volume. The script uses the checked-in Compose file explicitly, so local override files cannot redirect its startup or cleanup. It checks clean startup, rejection of empty and incorrect passwords, PostGIS installation by Goose, recorded migration status, repeatable migration, and persistence through restart and container recreation. It removes only its own test project and volume.
 
-Run `make api-test` to include the real HTTP lifecycle test in that same disposable setup. The test verifies the connection target before running database checks, checks readiness around migration and a paused database, and verifies pool cleanup after recovery. Additional probes hold a lock in the test database to exercise graceful drain and forced shutdown with an active request. CI runs the combined database and API check.
+Run `make api-test` to include the real HTTP lifecycle test in that same disposable setup. The test verifies the connection target before running database checks, checks readiness around migration and a paused database, and verifies pool cleanup after recovery. Additional probes hold a lock in the test database to exercise graceful drain and forced shutdown with an active request.
+
+### Browser-to-database quality gate
+
+Install dependencies with `make bootstrap`. Then install Chromium for the pinned Playwright version and run the complete local integration path. On Linux, install the browser's system libraries with Playwright's `--with-deps` option if your environment needs them.
+
+```bash
+npm --prefix apps/web exec -- playwright install --only-shell chromium
+make e2e-test
+```
+
+`make e2e-test` starts and migrates an isolated Compose database, runs the Go integration test, starts the Go binary and the built frontend, and opens Chromium through Vite's loopback preview origin. It verifies readiness, a paused database, recovery on the same page, a stopped API, and an offline browser. A temporary synthetic background style exercises real MapLibre without a provider or parking data. The suite checks the no-data notice across states and the canvas identity across trip mode and readiness changes.
+
+The browser test validates the disposable Compose project's label and published port before pausing its database. The harness uses ephemeral loopback ports, a random test password, and temporary build output. The browser receives no database credentials. On success, failure, SIGINT, or SIGTERM, the harness shuts down the test services and removes the temporary build and disposable volume. The GitHub Actions database job runs this combined database, API, and Chromium check.
 
 ## Verification commands
 
@@ -161,7 +194,7 @@ make check
 ## Repository layout
 
 ```text
-apps/web/       React/TypeScript/Vite frontend
+apps/web/       React/TypeScript/Vite frontend and Chromium integration check
 backend/        Go modular-monolith foundation
 db/             Goose runner and versioned migrations
 tests/db/       Isolated Compose database integration check
