@@ -130,12 +130,14 @@ def register(connection, manifest, snapshots, batch_id, capture_digest):
         manifest["adapter_version"],
         manifest["source_profile_version"],
     )
+    # PR-01 provides both a batch PK and a unique batch/scope key.
+    # Either can arbitrate a concurrent insert. The locked row is checked below.
     inserted = (
         connection.execute(
             """
         INSERT INTO sources.import_batch
           (batch_id, capture_manifest_sha256, scope_key, adapter_version, source_profile_version)
-        VALUES (%s, %s, %s, %s, %s) ON CONFLICT (batch_id) DO NOTHING RETURNING batch_id
+        VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING RETURNING batch_id
         """,
             (batch_id, *metadata),
         ).fetchone()

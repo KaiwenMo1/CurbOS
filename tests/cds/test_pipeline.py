@@ -424,21 +424,42 @@ class Pipeline(unittest.TestCase):
     def test_t16_concurrent_registrations_in_independent_stores(self):
         second = self.bundle.relocate(self.base / "other-store")
         counts = self.counts()
-        delay = (
-            "import time; from data.cds_capture import __main__ as cli; original = cli.database._dataset; "
-            "cli.database._dataset = lambda *args: (time.sleep(0.5), original(*args))[1]; "
-            "raise SystemExit(cli.main())"
-        )
+        gate = self.base / "start-gate"
+        gate.mkdir()
+        env = os.environ | {"CURBOS_CDS_TEST_GATE": str(gate)}
+        synchronize = """
+import os
+import time
+from pathlib import Path
+from data.cds_capture import __main__ as cli
+
+gate = Path(os.environ["CURBOS_CDS_TEST_GATE"])
+original = cli.database.register
+
+def synchronized_register(*args):
+    (gate / str(os.getpid())).touch()
+    deadline = time.monotonic() + 10
+    while len(list(gate.iterdir())) < 2:
+        if time.monotonic() > deadline:
+            raise RuntimeError("concurrent capture did not reach registration")
+        time.sleep(0.001)
+    return original(*args)
+
+cli.database.register = synchronized_register
+raise SystemExit(cli.main())
+"""
         with (
             subprocess.Popen(
-                [sys.executable, "-c", delay, *self.bundle.flags()],
+                [sys.executable, "-c", synchronize, *self.bundle.flags()],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                env=env,
             ) as first,
             subprocess.Popen(
-                [sys.executable, "-c", delay, *second.flags()],
+                [sys.executable, "-c", synchronize, *second.flags()],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                env=env,
             ) as concurrent,
         ):
             results = []
