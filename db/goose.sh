@@ -17,14 +17,14 @@ case "${1:-}" in
     ;;
   up|status|version)
     ;;
-  test-down-to-1)
+  test-down-to-1|test-down-to-2)
     if [[ ! "${COMPOSE_PROJECT_NAME:-}" =~ ^curbos-db-test-[0-9a-f]{16}$ ||
       "${COMPOSE_DISABLE_ENV_FILE:-}" != 1 || "${CURBOS_DB_PORT:-}" != 0 ||
       -n "${COMPOSE_ENV_FILES:-}" ]]; then
       printf 'Rollback requires the disposable CurbOS database test project.\n' >&2
       exit 1
     fi
-    migration_command=(down-to 1)
+    migration_command=(down-to "${1#test-down-to-}")
     ;;
   *)
     printf 'Usage: bash db/goose.sh {validate|up|status|version}\n' >&2
@@ -47,7 +47,7 @@ if ! endpoint=$("${compose[@]}" port db 5432) || [[ ! "$endpoint" =~ ^127\.0\.0\
 fi
 
 port="${BASH_REMATCH[1]}"
-if [[ "${1:-}" == test-down-to-1 ]]; then
+if [[ "${1:-}" == test-down-to-* ]]; then
   container=$("${compose[@]}" ps -q db)
   if [[ -z "$container" ]] ||
     ! identity=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}/{{index .Config.Labels "com.docker.compose.service"}}' "$container") ||

@@ -143,6 +143,9 @@ printf 'PASS authenticated startup and Goose migration on PostgreSQL %s with Pos
 
 bash db/goose.sh up
 require_equal "$history" "$(sql -c "$history_sql")"
+# Test the original PR-01 contract on its own version. PR-04 deliberately
+# makes provenance and release transitions stricter.
+bash db/goose.sh test-down-to-2
 sql -f - < tests/db/evidence_constraints.sql
 require_equal 0 "$(sql -c 'SELECT count(*) FROM sources.publication_scope;')"
 printf 'PASS clean evidence schema, release and scope constraints, provenance, geometry and synthetic fixture rollback\n'
@@ -160,7 +163,7 @@ require_equal "$baseline_history" "$(sql -c "$baseline_sql")"
 require_equal 4326 "$(sql -c "$postgis_sql")"
 bash db/goose.sh up
 require_equal 1 "$(sql -c "$evidence_applied_sql")"
-sql -f - < tests/db/evidence_constraints.sql
+require_equal 1 "$(sql -c "SELECT count(*) FROM pg_catalog.pg_namespace WHERE nspname = 'publication';")"
 require_equal 0 "$(sql -c 'SELECT count(*) FROM sources.publication_scope;')"
 history=$(sql -c "$history_sql")
 bash db/goose.sh up

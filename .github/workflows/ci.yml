@@ -92,7 +92,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/cds-venv"
           "$RUNNER_TEMP/cds-venv/bin/python" -m pip install -r data/cds_capture/requirements-test.txt
 
-      - name: Run synthetic offline capture checks
+      - name: Run synthetic capture, validation and publication checks
         run: |
           make cds-lint RUFF="$RUNNER_TEMP/cds-venv/bin/ruff"
           make cds-test PYTHON="$RUNNER_TEMP/cds-venv/bin/python"
