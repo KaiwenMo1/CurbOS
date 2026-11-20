@@ -67,9 +67,12 @@ export function BackendStatus() {
 
   return (
     <section className="backend-status" aria-label="Backend status">
-      <div role="status">
-        <h2>{title}</h2>
-        {detail && <p>{detail}</p>}
+      <div className="backend-readout" data-status={status} role="status">
+        <span className="backend-indicator" aria-hidden="true" />
+        <div>
+          <h2>{title}</h2>
+          {detail && <p>{detail}</p>}
+        </div>
       </div>
       <button
         type="button"
@@ -80,6 +83,7 @@ export function BackendStatus() {
           setAttempt(attempt + 1)
         }}
       >
+        <span aria-hidden="true">↻</span>
         Check again
       </button>
     </section>
