@@ -2,11 +2,15 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
-beforeEach(() => vi.stubEnv('VITE_MAP_STYLE_URL', undefined))
+beforeEach(() => {
+  vi.stubEnv('VITE_MAP_STYLE_URL', undefined)
+  vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+})
 
 afterEach(() => {
   cleanup()
   vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
 })
 
 describe('App', () => {

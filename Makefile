@@ -1,4 +1,4 @@
-.PHONY: bootstrap fmt fmt-check lint typecheck test build check db-migrate db-status db-test api-test
+.PHONY: bootstrap fmt fmt-check lint typecheck test build check db-migrate db-status db-test api-test e2e-test
 
 bootstrap:
 	npm --prefix apps/web ci
@@ -43,3 +43,6 @@ db-test:
 
 api-test:
 	bash tests/db/smoke.sh api
+
+e2e-test:
+	bash tests/db/smoke.sh e2e

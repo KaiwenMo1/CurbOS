@@ -1,5 +1,5 @@
 import { StrictMode } from 'react'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { MapViewport } from './MapViewport'
@@ -35,11 +35,15 @@ function mapEvent(name: string, error = new Error('Basemap request failed')) {
   act(() => call[1]({ error }))
 }
 
-beforeEach(() => vi.resetAllMocks())
+beforeEach(() => {
+  vi.resetAllMocks()
+  vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+})
 
 afterEach(() => {
   cleanup()
   vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
   vi.useRealTimers()
 })
 
@@ -81,10 +85,11 @@ describe('MapViewport', () => {
     expect(mockMap.start).toHaveBeenCalledWith(expect.objectContaining({
       style: new URL(styleURL, window.location.origin).href,
     }))
-    const status = screen.getByRole('status')
+    const map = within(screen.getByRole('region', { name: 'Map viewport' }))
+    const status = map.getByRole('status')
     expect(status).toHaveTextContent('Loading basemap')
     mapEvent('load')
-    expect(screen.getByRole('status')).toBe(status)
+    expect(map.getByRole('status')).toBe(status)
     expect(status).toBeEmptyDOMElement()
 
     fireEvent.click(screen.getByRole('radio', { name: 'Going Out' }))

@@ -3,8 +3,8 @@ set -euo pipefail
 set +x
 
 case "${1:-db}" in
-  db|api) mode=${1:-db} ;;
-  *) printf 'Usage: %s [db|api]\n' "$0" >&2; exit 2 ;;
+  db|api|e2e) mode=${1:-db} ;;
+  *) printf 'Usage: %s [db|api|e2e]\n' "$0" >&2; exit 2 ;;
 esac
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
@@ -15,10 +15,21 @@ export CURBOS_DB_PORT=0
 export COMPOSE_DISABLE_ENV_FILE=1
 unset COMPOSE_ENV_FILES
 compose=(docker compose -f compose.yaml --project-name "$COMPOSE_PROJECT_NAME")
+e2e_container=
+e2e_pid=
 
 cleanup() {
   local result=$?
   trap - EXIT
+  trap '' INT TERM
+  if [[ -n "$e2e_pid" ]]; then
+    kill -TERM "$e2e_pid" 2>/dev/null || true
+    wait "$e2e_pid" || true
+  fi
+  if [[ -n "$e2e_container" ]] &&
+    [[ "$(docker inspect --format '{{.State.Paused}}' "$e2e_container" 2>/dev/null)" == true ]]; then
+    docker unpause "$e2e_container" >/dev/null || result=1
+  fi
   if (( result != 0 )); then
     "${compose[@]}" ps -a >&2 || true
     "${compose[@]}" logs --tail 50 db >&2 || true
@@ -46,6 +57,8 @@ require_equal() {
 
 docker info --format '{{.ServerVersion}}' >/dev/null
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 if config_error=$(POSTGRES_PASSWORD= "${compose[@]}" config --quiet 2>&1) ||
   [[ "$config_error" != *'Set POSTGRES_PASSWORD in the local .env file'* ]]; then
   printf 'Expected Compose to reject an empty database password.\n%s\n' "$config_error" >&2
@@ -70,7 +83,7 @@ fi
 require_equal 1 "$(sql "SELECT count(*) FROM pg_available_extensions WHERE name = 'postgis';")"
 require_equal 0 "$(sql "SELECT count(*) FROM pg_extension WHERE extname = 'postgis';")"
 bash db/goose.sh validate
-if [[ "$mode" == api ]]; then
+if [[ "$mode" != db ]]; then
   endpoint=$("${compose[@]}" port db 5432)
   require_equal 127.0.0.1 "${endpoint%:*}"
   container=$("${compose[@]}" ps -q db)
@@ -113,3 +126,19 @@ require_equal 4326 "$(sql 'SELECT ST_SRID(ST_SetSRID(ST_MakePoint(0, 0), 4326));
 bash db/goose.sh up
 require_equal "$history" "$(sql "$history_sql")"
 printf 'PASS stopped DB fails migration and recreated container preserves data\n'
+
+if [[ "$mode" == e2e ]]; then
+  # The persistence check recreated the container. Resolve the current identity and port.
+  export CURBOS_TEST_DB_ENDPOINT CURBOS_TEST_DB_CONTAINER
+  CURBOS_TEST_DB_ENDPOINT=$("${compose[@]}" port db 5432)
+  e2e_container=$("${compose[@]}" ps -q db)
+  CURBOS_TEST_DB_CONTAINER=$e2e_container
+  unset PGSERVICE PGSERVICEFILE PGOPTIONS
+  # Bash runs signal traps immediately while waiting on an asynchronous child.
+  node apps/web/tests/readiness.e2e.mjs &
+  e2e_pid=$!
+  result=0
+  wait "$e2e_pid" || result=$?
+  e2e_pid=
+  exit "$result"
+fi
