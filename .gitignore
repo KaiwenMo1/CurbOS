@@ -3,6 +3,11 @@
 .env.*
 !.env.example
 
+# Local research data
+/m2-research/
+/curbos.zip
+/CurbOS_M2_Raw_Batch_01.zip
+
 # Editors and operating systems
 .idea/
 .vscode/

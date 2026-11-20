@@ -107,6 +107,7 @@ function MapCanvas({ styleURL }: { styleURL: string }) {
         {status === 'loading' && <p>Loading basemap…</p>}
         {status === 'unavailable' && (
           <>
+            <span className="map-symbol" aria-hidden="true" />
             <p>Map rendering unavailable</p>
             <p>Check browser WebGL support and the configured map source, then reload.</p>
           </>
@@ -125,8 +126,9 @@ export function MapViewport({ styleURL }: { styleURL?: string }) {
         <MapCanvas key={style} styleURL={style} />
       ) : (
         <div className="map-message">
+          <span className="map-symbol" aria-hidden="true" />
           <p>Basemap not configured</p>
-          <p>A permitted style source is required to display a basemap.</p>
+          <p>Set an approved map style to show streets.</p>
         </div>
       )}
     </section>
