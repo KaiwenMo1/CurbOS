@@ -151,27 +151,43 @@ def _identities(snapshot):
     )
 
 
-def _zone_policies(payload, policies):
+def _zone_policies(payload, policy_ids, usable_policy_ids):
     raw = payload.get("curb_policy_ids")
+    assessment = {
+        "policy_ref_status": "UNASSESSED",
+        "policy_parse_status": "UNASSESSED",
+        "missing_policy_refs": [],
+    }
     if raw is None or raw == []:
-        return "UNASSESSED", [], ["POLICY_REFERENCES_MISSING"]
+        return assessment, ["POLICY_REFERENCES_MISSING"]
     if not isinstance(raw, list):
-        return "INCOMPLETE", [], ["POLICY_REFERENCE_INVALID"]
+        assessment["policy_ref_status"] = "INCOMPLETE"
+        return assessment, ["POLICY_REFERENCE_INVALID"]
     issues = set()
-    missing = []
+    has_unusable_policy = False
     for index, ref in enumerate(raw):
         key = _uuid(ref)
         if key is None:
             issues.add("POLICY_REFERENCE_INVALID")
-        elif not policies[key]:
-            missing.append({"source_policy_id": ref, "source_position": index})
+        elif not policy_ids[key]:
+            assessment["missing_policy_refs"].append(
+                {"source_policy_id": ref, "source_position": index}
+            )
             issues.add("POLICY_REFERENCE_NOT_FOUND")
-        elif policies[key] > 1:
+        elif policy_ids[key] > 1:
             issues.add("POLICY_REFERENCE_AMBIGUOUS")
-    return "INCOMPLETE" if issues else "COMPLETE", missing, sorted(issues)
+        elif key not in usable_policy_ids:
+            has_unusable_policy = True
+    assessment["policy_ref_status"] = "INCOMPLETE" if issues else "COMPLETE"
+    if has_unusable_policy:
+        assessment["policy_parse_status"] = "FAILED"
+        issues.add("POLICY_REFERENCE_UNUSABLE")
+    elif not issues:
+        assessment["policy_parse_status"] = "PASSED"
+    return assessment, sorted(issues)
 
 
-def _records(snapshot, identities, policies):
+def _records(snapshot, identities, *, policy_ids=None, usable_policy_ids=None):
     role = snapshot.entry["role"]
     for index, payload in enumerate(snapshot.records):
         obj = payload if isinstance(payload, dict) else {}
@@ -192,7 +208,9 @@ def _records(snapshot, identities, policies):
             )
             specifics["geometry_evidence"] = "SOURCE_REPORTED"
         if role == "zones":
-            state, missing, ref_issues = _zone_policies(obj, policies)
+            policy_assessment, policy_issues = _zone_policies(
+                obj, policy_ids, usable_policy_ids
+            )
             issues.extend(_zone_geometry(geometry))
             crs = snapshot.entry.get("source_crs")
             if crs is not None and crs.upper() not in (
@@ -202,10 +220,8 @@ def _records(snapshot, identities, policies):
                 "WGS84",
             ):
                 issues.append("ZONE_CRS_UNSUPPORTED")
-            issues.extend(ref_issues)
-            specifics.update(
-                {"policy_ref_status": state, "missing_policy_refs": missing}
-            )
+            issues.extend(policy_issues)
+            specifics.update(policy_assessment)
         elif role == "areas":
             issues.extend(_area_geometry(geometry))
         elif not _policy_supported(obj):
@@ -222,7 +238,15 @@ def _records(snapshot, identities, policies):
 
 
 def _stage_content(snapshots, batch_id, capture_digest, emit):
-    policy_ids = _identities(snapshots["policies"])
+    policies = snapshots["policies"]
+    policy_ids = _identities(policies)
+    policy_records = list(_records(policies, policy_ids))
+    usable_policy_ids = {
+        _uuid(record["source_id"])
+        for record in policy_records
+        if record["status"] == "PARSED"
+    }
+    zone_policy_parse_counts = Counter()
     quarantine = []
     missing = []
     components = {}
@@ -231,14 +255,26 @@ def _stage_content(snapshots, batch_id, capture_digest, emit):
         if role not in snapshots:
             continue
         snapshot = snapshots[role]
-        ids = _identities(snapshot)
+        ids = policy_ids if role == "policies" else _identities(snapshot)
         reasons = Counter()
         counts = Counter()
 
         def lines():
-            for record in _records(snapshot, ids, policy_ids):
+            records = (
+                policy_records
+                if role == "policies"
+                else _records(
+                    snapshot,
+                    ids,
+                    policy_ids=policy_ids,
+                    usable_policy_ids=usable_policy_ids,
+                )
+            )
+            for record in records:
                 issues = record["issues"]
                 counts[record["status"]] += 1
+                if role == "zones":
+                    zone_policy_parse_counts[record["policy_parse_status"]] += 1
                 if issues:
                     reasons.update(issues)
                     quarantine.append(
@@ -282,7 +318,7 @@ def _stage_content(snapshots, batch_id, capture_digest, emit):
         }
     hashes["quarantine.ndjson"] = emit("quarantine.ndjson", map(canonical, quarantine))
     report = {
-        "stage_schema_version": 1,
+        "stage_schema_version": 2,
         "batch_id": str(batch_id),
         "capture_manifest_sha256": capture_digest,
         "public_eligible": False,
@@ -293,6 +329,7 @@ def _stage_content(snapshots, batch_id, capture_digest, emit):
         "missing_policy_ref_count": len(missing),
         "zones_with_missing_policy_refs": len({ref["source_index"] for ref in missing}),
         "missing_policy_refs": missing,
+        "zone_policy_parse_status_counts": dict(zone_policy_parse_counts),
     }
     encoded = canonical(report)
     report_sha = emit("report.json", (encoded,))["sha256"]

@@ -35,6 +35,14 @@ For an authorized local capture, apply the existing Goose migrations and remove 
 
 The tool writes QA to local files and creates no database QA, release, pointer or projection rows. All reports have `public_eligible=false`, including batches with zero quarantines. Source geometry and resolved policy IDs provide no evidence of field accuracy, legal coverage or vacancy.
 
+## Zone policy QA
+
+`policy_ref_status` measures ID resolution. `COMPLETE` means every ID in a nonempty reference list matches exactly one Policy in the batch. Missing, duplicate or invalid references make it `INCOMPLETE`. An absent or empty list is `UNASSESSED`.
+
+`policy_parse_status` is `PASSED` when every reference resolves uniquely and every matched record passed PR-02's structural checks. It is `FAILED` when any uniquely resolved Policy is quarantined, including when the Zone also has unresolved references. Those Zones receive `POLICY_REFERENCE_UNUSABLE`. In other cases where the references cannot all be assessed, the parse status is `UNASSESSED`. A structural pass establishes only that the adapter accepts the record shape. Legal meaning and public eligibility require separate review.
+
+Stage schema version 2 records `zone_policy_parse_status_counts` in `report.json` alongside the existing missing-reference and quarantine totals. For a manifest with a retained version 1 stage, use a new manifest `adapter_version` to create a separate batch with the revised QA.
+
 ## Reproduce synthetic checks
 
 ```sh

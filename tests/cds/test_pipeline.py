@@ -287,6 +287,9 @@ class Pipeline(unittest.TestCase):
             all(record["policy_ref_status"] == "INCOMPLETE" for record in records)
         )
         self.assertIn("POLICY_REFERENCE_AMBIGUOUS", records[2]["issues"])
+        self.assertTrue(
+            all(record["policy_parse_status"] == "UNASSESSED" for record in records)
+        )
         self.assertFalse(report["public_eligible"])
 
     def test_t10_unsupported_policy_shapes_keep_raw_values(self):
@@ -311,6 +314,65 @@ class Pipeline(unittest.TestCase):
             self.bundle.staged(result)["components"]["policies"]["issue_counts"],
             {"UNSUPPORTED_POLICY_FORM": 2},
         )
+
+    def test_t10_resolved_policy_can_fail_structural_validation(self):
+        valid = policy()
+        valid["rules"][0]["user_classes"] = ["car"]
+        null_member = policy(101)
+        null_member["rules"][0]["user_classes"] = [None]
+        scalar = policy(102)
+        scalar["rules"][0]["user_classes"] = "car"
+        invalid_id = policy(103) | {"curb_policy_id": "synthetic-invalid-id"}
+        policies = [valid, null_member, scalar, invalid_id]
+        zones = [
+            zone(1),
+            zone(2, [key(101)]),
+            zone(3, [key(102)]),
+            zone(4, [key(200), key(102)]),
+            zone(5, ["synthetic-invalid-id"]),
+            zone(6, []),
+        ]
+        self.bundle.component("policies", envelope("policies", policies))
+        self.bundle.component("zones", envelope("zones", zones))
+        self.bundle.save()
+        result = self.capture()
+
+        rows = self.bundle.staged(result, "zones.ndjson")
+        self.assertEqual([row["payload"] for row in rows], zones)
+        self.assertEqual(
+            [(row["policy_ref_status"], row["policy_parse_status"]) for row in rows],
+            [
+                ("COMPLETE", "PASSED"),
+                ("COMPLETE", "FAILED"),
+                ("COMPLETE", "FAILED"),
+                ("INCOMPLETE", "FAILED"),
+                ("INCOMPLETE", "UNASSESSED"),
+                ("UNASSESSED", "UNASSESSED"),
+            ],
+        )
+        self.assertEqual(rows[0]["status"], "PARSED")
+        self.assertIn("POLICY_REFERENCE_INVALID", rows[4]["issues"])
+        for row in rows[1:4]:
+            self.assertIn("POLICY_REFERENCE_UNUSABLE", row["issues"])
+            self.assertEqual(row["status"], "QUARANTINED")
+        policy_rows = self.bundle.staged(result, "policies.ndjson")
+        self.assertEqual([row["payload"] for row in policy_rows], policies)
+        for row in policy_rows[1:3]:
+            self.assertIn("UNSUPPORTED_POLICY_FORM", row["issues"])
+        self.assertIn("SOURCE_ID_INVALID", policy_rows[3]["issues"])
+        report = self.bundle.staged(result)
+        self.assertEqual(report["stage_schema_version"], 2)
+        self.assertEqual(report["missing_policy_ref_count"], 1)
+        self.assertEqual(
+            report["zone_policy_parse_status_counts"],
+            {"PASSED": 1, "FAILED": 3, "UNASSESSED": 2},
+        )
+        self.assertEqual(
+            report["components"]["zones"]["issue_counts"]["POLICY_REFERENCE_UNUSABLE"],
+            3,
+        )
+        self.assertFalse(report["public_eligible"])
+        self.assertEqual(self.capture(), result)
 
     def test_t11_geometry_issues_and_precise_original_coordinates(self):
         geometries = [
