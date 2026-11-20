@@ -1,9 +1,12 @@
 """Invented source records for ADR-028 tests. These coordinates do not depict parking."""
 
+import os
+import subprocess
 from copy import deepcopy
 from pathlib import Path
 from uuid import UUID
 
+from data.cds_capture import database
 from data.cds_capture.__main__ import arguments
 from data.cds_capture.manifest import canonical, digest, parse_json
 
@@ -120,3 +123,55 @@ class Bundle:
                 for line in path.read_bytes().splitlines()
             ]
         return parse_json(path.read_bytes(), "TEST_FIXTURE_JSON")
+
+
+def prepare_disposable_database():
+    # Authorization applies only to the named disposable Compose container.
+    project = os.environ["COMPOSE_PROJECT_NAME"]
+    container = os.environ["CURBOS_TEST_DB_CONTAINER"]
+    port = os.environ["CURBOS_CAPTURE_DB_PORT"]
+    if not project.startswith("curbos-db-test-") or len(container) != 64:
+        raise RuntimeError("capture tests require an isolated Compose project")
+    inspected = subprocess.check_output(
+        [
+            "docker",
+            "inspect",
+            "--format",
+            '{{index .Config.Labels "com.docker.compose.project"}}/{{index .Config.Labels "com.docker.compose.service"}} '
+            '{{range index .NetworkSettings.Ports "5432/tcp"}}{{.HostIp}}:{{.HostPort}}{{end}}',
+            container,
+        ],
+        text=True,
+    ).strip()
+    if inspected != f"{project}/db 127.0.0.1:{port}":
+        raise RuntimeError(
+            "capture database target differs from the disposable service"
+        )
+    if (
+        os.environ.get("PGUSER", "curbos") != "curbos"
+        or os.environ.get("PGDATABASE", "curbos") != "curbos"
+    ):
+        raise RuntimeError(
+            "capture tests require the disposable Compose role and database"
+        )
+    with database.transaction() as connection:
+        connection.execute(
+            "INSERT INTO sources.publication_scope (scope_key, display_name) VALUES ('synthetic-research', 'Synthetic') ON CONFLICT (scope_key) DO NOTHING"
+        )
+
+
+def offline_command_prefix():
+    prefix = ["unshare", "-Urn", "--"]
+    probe = subprocess.run([*prefix, "true"], capture_output=True, check=False)
+    if probe.returncode and os.environ.get("GITHUB_ACTIONS") == "true":
+        return [
+            "sudo",
+            "-n",
+            "--preserve-env=CURBOS_CAPTURE_DB_PORT,PYTHONDONTWRITEBYTECODE",
+            "unshare",
+            "-n",
+            f"--setgid={os.getgid()}",
+            f"--setuid={os.getuid()}",
+            "--",
+        ]
+    return prefix

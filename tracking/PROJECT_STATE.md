@@ -2,16 +2,17 @@
 
 Updated 2026-11-20.
 
-- **Milestone** M2 PR-02, Offline CDS Capture. M1 foundation merged.
+- **Milestone** M2 PR-03, Staged Evidence Validation. M1 foundation merged.
 - **PR-01** Merged in [PR #1](https://github.com/KaiwenMo1/CurbOS/pull/1) as `d023604`. [PR CI passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44622343482).
 - **PR-02** Merged in [PR #2](https://github.com/KaiwenMo1/CurbOS/pull/2) as `bcfe3ec`. The [PR CI run passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44624913175).
 - **PR-03** Merged in [PR #3](https://github.com/KaiwenMo1/CurbOS/pull/3) as `91bfbad`. The API provides process liveness and bounded PostgreSQL readiness with the PostGIS and Goose baseline. [PR CI passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44628781477).
 - **PR-04** Merged in [PR #4](https://github.com/KaiwenMo1/CurbOS/pull/4) as `9e9aa0b`. The responsive shell and opt-in MapLibre keep the parking-data notice above the map. [PR CI passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44633196245).
 - **PR-05** Merged in [PR #5](https://github.com/KaiwenMo1/CurbOS/pull/5) as `d6ae0d7`. The browser checks PostgreSQL readiness through the existing Go API. The parking-data notice remains visible in every readiness state. [PR CI passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44663981910).
 - **M2 PR-01** Merged in [PR #7](https://github.com/KaiwenMo1/CurbOS/pull/7) as `e0267c0`. The evidence schema enforces release and QA lineage in PostgreSQL.
-- **M2 PR-02** Implements local manifest verification, provenance registration and private staging on `m2/pr-02-offline-cds-capture` from `e0267c0`. [Capture runbook](../data/cds_capture/README.md)
-- **PR-02 evidence** Locally passed the 29-test synthetic suite, Ruff, Goose validation, `make db-test`, `make api-test`, `make e2e-test`, and `make check`. Real archive preflight was outside this run.
-- **Next review gate** ChatGPT and human review of the M2 PR-02 diff and synthetic acceptance evidence. Real source preflight and public activation require separate approval.
+- **M2 PR-02** Merged in [PR #8](https://github.com/KaiwenMo1/CurbOS/pull/8) as `f35265b`. The final 30-test synthetic suite and [hosted checks](https://github.com/KaiwenMo1/CurbOS/actions/runs/44702356395) passed. [Capture runbook](../data/cds_capture/README.md)
+- **M2 PR-03** Validates Stage Schema v2 and prepares private candidate packages on `m2/pr-03-evidence-validation` from `f35265b`. [Validation runbook](../data/cds_validate/README.md)
+- **PR-03 evidence** Locally passed the 41-test synthetic suite, Ruff, Goose validation, `make db-test`, `make api-test`, `make e2e-test`, and `make check`. The offline validator used a disposable PostgreSQL Unix socket, and the corruption and crash tests left retained evidence intact.
+- **Next review gate** ChatGPT and human review of the M2 PR-03 diff and synthetic evidence. Real-archive validation and public activation require separate approval.
 
 ## M1 acceptance evidence
 

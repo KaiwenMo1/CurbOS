@@ -14,7 +14,15 @@ from psycopg import sql
 from data.cds_capture import database
 from data.cds_capture.__main__ import run
 from data.cds_capture.manifest import CaptureError, canonical, digest, parse_json
-from fixtures import Bundle, envelope, key, policy, zone
+from fixtures import (
+    Bundle,
+    envelope,
+    key,
+    offline_command_prefix,
+    policy,
+    prepare_disposable_database,
+    zone,
+)
 
 _PRIVATE = ("source_dataset", "raw_artifact", "import_batch", "import_artifact")
 _PUBLIC = (
@@ -34,38 +42,7 @@ _PUBLIC = (
 class Pipeline(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Authorization applies only to the named disposable Compose container.
-        project = os.environ["COMPOSE_PROJECT_NAME"]
-        container = os.environ["CURBOS_TEST_DB_CONTAINER"]
-        port = os.environ["CURBOS_CAPTURE_DB_PORT"]
-        if not project.startswith("curbos-db-test-") or len(container) != 64:
-            raise RuntimeError("capture tests require an isolated Compose project")
-        inspected = subprocess.check_output(
-            [
-                "docker",
-                "inspect",
-                "--format",
-                '{{index .Config.Labels "com.docker.compose.project"}}/{{index .Config.Labels "com.docker.compose.service"}} '
-                '{{range index .NetworkSettings.Ports "5432/tcp"}}{{.HostIp}}:{{.HostPort}}{{end}}',
-                container,
-            ],
-            text=True,
-        ).strip()
-        if inspected != f"{project}/db 127.0.0.1:{port}":
-            raise RuntimeError(
-                "capture database target differs from the disposable service"
-            )
-        if (
-            os.environ.get("PGUSER", "curbos") != "curbos"
-            or os.environ.get("PGDATABASE", "curbos") != "curbos"
-        ):
-            raise RuntimeError(
-                "capture tests require the disposable Compose role and database"
-            )
-        with database.transaction() as connection:
-            connection.execute(
-                "INSERT INTO sources.publication_scope (scope_key, display_name) VALUES ('synthetic-research', 'Synthetic')"
-            )
+        prepare_disposable_database()
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="curbos-cds-db-")
@@ -584,19 +561,6 @@ raise SystemExit(cli.main())
     def test_t19_full_pipeline_with_network_namespace_and_unix_socket(self):
         env = os.environ | {"CURBOS_CAPTURE_DB_PORT": "5432"}
         socket_dir = os.environ["CURBOS_TEST_DB_SOCKET"]
-        prefix = ["unshare", "-Urn", "--"]
-        probe = subprocess.run([*prefix, "true"], capture_output=True, check=False)
-        if probe.returncode and os.environ.get("GITHUB_ACTIONS") == "true":
-            prefix = [
-                "sudo",
-                "-n",
-                "--preserve-env=CURBOS_CAPTURE_DB_PORT,PYTHONDONTWRITEBYTECODE",
-                "unshare",
-                "-n",
-                f"--setgid={os.getgid()}",
-                f"--setuid={os.getuid()}",
-                "--",
-            ]
         code = (
             "import socket; from data.cds_capture import __main__ as cli; "
             "probe = socket.socket(); probe.settimeout(1); "
@@ -604,7 +568,10 @@ raise SystemExit(cli.main())
             "raise SystemExit(cli.main())"
         )
         completed = self.subprocess(
-            code, prefix=prefix, extra=("--db-socket-dir", socket_dir), env=env
+            code,
+            prefix=offline_command_prefix(),
+            extra=("--db-socket-dir", socket_dir),
+            env=env,
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(parse_json(completed.stdout, "TEST")["state"], "STAGED")
