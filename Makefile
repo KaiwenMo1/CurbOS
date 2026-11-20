@@ -1,4 +1,7 @@
-.PHONY: bootstrap fmt fmt-check lint typecheck test build check db-migrate db-status db-test api-test e2e-test
+PYTHON ?= python3
+RUFF ?= ruff
+
+.PHONY: bootstrap fmt fmt-check lint typecheck test build check db-migrate db-status db-test api-test e2e-test cds-unit cds-lint cds-test
 
 bootstrap:
 	npm --prefix apps/web ci
@@ -46,3 +49,13 @@ api-test:
 
 e2e-test:
 	bash tests/db/smoke.sh e2e
+
+cds-unit:
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest discover -s tests/cds -p test_unit.py -v
+
+cds-lint:
+	$(RUFF) check data/cds_capture tests/cds
+	$(RUFF) format --check data/cds_capture tests/cds
+
+cds-test:
+	CURBOS_TEST_PYTHON="$(PYTHON)" bash tests/db/smoke.sh cds

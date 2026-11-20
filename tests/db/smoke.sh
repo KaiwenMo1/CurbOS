@@ -3,8 +3,8 @@ set -euo pipefail
 set +x
 
 case "${1:-db}" in
-  db|api|e2e) mode=${1:-db} ;;
-  *) printf 'Usage: %s [db|api|e2e]\n' "$0" >&2; exit 2 ;;
+  db|api|e2e|cds) mode=${1:-db} ;;
+  *) printf 'Usage: %s [db|api|e2e|cds]\n' "$0" >&2; exit 2 ;;
 esac
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
@@ -17,6 +17,7 @@ unset COMPOSE_ENV_FILES
 compose=(docker compose -f compose.yaml --project-name "$COMPOSE_PROJECT_NAME")
 e2e_container=
 e2e_pid=
+cds_socket_root=
 
 cleanup() {
   local result=$?
@@ -36,6 +37,9 @@ cleanup() {
   fi
   # This project is generated above and owns only the disposable test volume.
   if ! "${compose[@]}" down --volumes; then
+    result=1
+  fi
+  if [[ -n "$cds_socket_root" ]] && ! rm -rf -- "$cds_socket_root"; then
     result=1
   fi
   exit "$result"
@@ -59,6 +63,18 @@ docker info --format '{{.ServerVersion}}' >/dev/null
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+if [[ "$mode" == cds ]]; then
+  # The namespace test shares only the disposable database's Unix socket.
+  cds_socket_root=$(mktemp -d /tmp/curbos-cds-socket.XXXXXXXX)
+  mkdir "$cds_socket_root/socket"
+  cat > "$cds_socket_root/compose.yaml" <<EOF
+services:
+  db:
+    volumes:
+      - "$cds_socket_root/socket:/var/run/postgresql"
+EOF
+  compose+=(-f "$cds_socket_root/compose.yaml")
+fi
 if config_error=$(POSTGRES_PASSWORD= "${compose[@]}" config --quiet 2>&1) ||
   [[ "$config_error" != *'Set POSTGRES_PASSWORD in the local .env file'* ]]; then
   printf 'Expected Compose to reject an empty database password.\n%s\n' "$config_error" >&2
@@ -73,6 +89,19 @@ fi
 printf 'PASS missing password is rejected by Compose and by a clean PostgreSQL startup\n'
 
 "${compose[@]}" up -d --wait --wait-timeout 90 db
+if [[ "$mode" == cds ]]; then
+  bash db/goose.sh up
+  endpoint=$("${compose[@]}" port db 5432)
+  require_equal 127.0.0.1 "${endpoint%:*}"
+  CURBOS_TEST_DB_CONTAINER=$("${compose[@]}" ps -q db)
+  export CURBOS_TEST_DB_CONTAINER
+  export CURBOS_TEST_DB_SOCKET="$cds_socket_root/socket"
+  export CURBOS_CAPTURE_DB_PORT="${endpoint##*:}" PGPASSWORD="$POSTGRES_PASSWORD"
+  export PGUSER=curbos PGDATABASE=curbos PYTHONDONTWRITEBYTECODE=1
+  unset PGSERVICE PGSERVICEFILE PGOPTIONS PGHOSTADDR
+  "${CURBOS_TEST_PYTHON:-python3}" -m unittest discover -s tests/cds -v
+  exit 0
+fi
 require_equal 1 "$(sql -c 'SELECT 1;')"
 if auth_error=$("${compose[@]}" exec -T -e PGPASSWORD=invalid db \
   psql -X -w -h 127.0.0.1 -U curbos -d curbos -Atqc 'SELECT 1;' 2>&1) ||

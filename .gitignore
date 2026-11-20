@@ -7,6 +7,7 @@
 /m2-research/
 /curbos.zip
 /CurbOS_M2_Raw_Batch_01.zip
+/M2_Supplement_Batch_02.zip
 
 # Editors and operating systems
 .idea/
@@ -24,6 +25,11 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+
+# Python caches and local environment
+__pycache__/
+.ruff_cache/
+.venv/
 
 # Local logs and temporary files
 *.log
