@@ -155,9 +155,11 @@ def identity(manifest):
         for component in manifest["components"]
     ]
     capture_digest = digest(canonical(values))
-    return capture_digest, uuid5(
-        NAMESPACE_URL, f"curbos:cds-capture:v1:{capture_digest}"
-    )
+    return capture_digest, batch_id_for_digest(capture_digest)
+
+
+def batch_id_for_digest(capture_digest):
+    return uuid5(NAMESPACE_URL, f"curbos:cds-capture:v1:{capture_digest}")
 
 
 def verify_inventory(raw, manifest):

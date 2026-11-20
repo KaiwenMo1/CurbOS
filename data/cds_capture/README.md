@@ -43,6 +43,8 @@ The tool writes QA to local files and creates no database QA, release, pointer o
 
 Stage schema version 2 records `zone_policy_parse_status_counts` in `report.json` alongside the existing missing-reference and quarantine totals. For a manifest with a retained version 1 stage, use a new manifest `adapter_version` to create a separate batch with the revised QA.
 
+For deeper offline QA and private candidate preparation, pass the registered Stage Schema v2 directory to the [evidence validator](../cds_validate/README.md).
+
 ## Reproduce synthetic checks
 
 ```sh
