@@ -160,6 +160,14 @@ Run the database integration check with `make db-test`. It requires Bash, Go, Do
 
 Run `make api-test` to include the real HTTP lifecycle test in that same disposable setup. The test verifies the connection target before running database checks, checks readiness around migration and a paused database, and verifies pool cleanup after recovery. Additional probes hold a lock in the test database to exercise graceful drain and forced shutdown with an active request.
 
+### M2 evidence schema
+
+`make db-migrate` applies migration `00002` after PostGIS. It creates empty `sources`, `geo`, and `rules` schemas for source provenance, QA, and release-scoped Zones, Policies, and Areas. Composite foreign keys keep their relationships within one release and restrict the nullable active pointer to its own scope. An imported source identifier can be recorded independently of physical resource identity. A valid WGS84 LineString alone gives no evidence of curb placement, side, or parking legality.
+
+`make db-test` checks the empty schema, inserts explicitly synthetic rows in a rolled-back transaction, and tests rejection of invalid relationships, digests, metadata, and geometry. It then rolls back migration `00002` and reapplies it in the disposable project, preserving migration `00001` and PostGIS. The Down migration deletes M2 tables and evidence and is for disposable tests only. Release rollback will use the active pointer workflow when implemented.
+
+The pointer and audit tables define storage for a future publication workflow. Public eligibility, source bundle validation, frozen-data and audit immutability, operator authorization, and compare-and-swap activation are later gates.
+
 ### Browser-to-database quality gate
 
 Install dependencies with `make bootstrap`. Then install Chromium for the pinned Playwright version and run the complete local integration path. On Linux, install the browser's system libraries with Playwright's `--with-deps` option if your environment needs them.

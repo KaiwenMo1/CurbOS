@@ -44,8 +44,8 @@ cleanup() {
 sql() {
   "${compose[@]}" exec -T db sh -ec '
     PGPASSWORD="$POSTGRES_PASSWORD" exec psql -X -w -h 127.0.0.1 \
-      -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atqc "$1"
-  ' sh "$1"
+      -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atq "$@"
+  ' sh "$@"
 }
 
 require_equal() {
@@ -73,15 +73,15 @@ fi
 printf 'PASS missing password is rejected by Compose and by a clean PostgreSQL startup\n'
 
 "${compose[@]}" up -d --wait --wait-timeout 90 db
-require_equal 1 "$(sql 'SELECT 1;')"
+require_equal 1 "$(sql -c 'SELECT 1;')"
 if auth_error=$("${compose[@]}" exec -T -e PGPASSWORD=invalid db \
   psql -X -w -h 127.0.0.1 -U curbos -d curbos -Atqc 'SELECT 1;' 2>&1) ||
   [[ "$auth_error" != *'password authentication failed'* ]]; then
   printf 'Expected PostgreSQL to reject an incorrect password over TCP.\n%s\n' "$auth_error" >&2
   exit 1
 fi
-require_equal 1 "$(sql "SELECT count(*) FROM pg_available_extensions WHERE name = 'postgis';")"
-require_equal 0 "$(sql "SELECT count(*) FROM pg_extension WHERE extname = 'postgis';")"
+require_equal 1 "$(sql -c "SELECT count(*) FROM pg_available_extensions WHERE name = 'postgis';")"
+require_equal 0 "$(sql -c "SELECT count(*) FROM pg_extension WHERE extname = 'postgis';")"
 bash db/goose.sh validate
 if [[ "$mode" != db ]]; then
   endpoint=$("${compose[@]}" port db 5432)
@@ -99,19 +99,48 @@ if [[ "$mode" != db ]]; then
 fi
 PGSERVICE=curbos-missing-service PGSERVICEFILE=/dev/null PGOPTIONS='-c search_path=pg_catalog' bash db/goose.sh up
 bash db/goose.sh status
-require_equal public "$(sql "SELECT extnamespace::regnamespace FROM pg_extension WHERE extname = 'postgis';")"
-require_equal 4326 "$(sql 'SELECT ST_SRID(ST_SetSRID(ST_MakePoint(0, 0), 4326));')"
-require_equal 1 "$(sql 'SELECT count(*) FROM public.goose_db_version WHERE version_id = 1 AND is_applied;')"
+postgis_sql='SELECT public.ST_SRID(public.ST_SetSRID(public.ST_MakePoint(0, 0), 4326));'
+baseline_sql='SELECT id, is_applied, tstamp FROM public.goose_db_version WHERE version_id = 1 ORDER BY id DESC LIMIT 1;'
+evidence_applied_sql='SELECT COALESCE((SELECT is_applied::int FROM public.goose_db_version WHERE version_id = 2 ORDER BY id DESC LIMIT 1), 0);'
+require_equal public "$(sql -c "SELECT extnamespace::regnamespace FROM pg_extension WHERE extname = 'postgis';")"
+require_equal 4326 "$(sql -c "$postgis_sql")"
+require_equal 1 "$(sql -c 'SELECT count(*) FROM public.goose_db_version WHERE version_id = 1 AND is_applied;')"
+require_equal 1 "$(sql -c "$evidence_applied_sql")"
+baseline_history=$(sql -c "$baseline_sql")
 history_sql="SELECT id, version_id, is_applied, tstamp FROM public.goose_db_version ORDER BY id;"
-history=$(sql "$history_sql")
+history=$(sql -c "$history_sql")
 printf 'PASS authenticated startup and Goose migration on PostgreSQL %s with PostGIS %s\n' \
-  "$(sql 'SHOW server_version;')" "$(sql 'SELECT postgis_lib_version();')"
+  "$(sql -c 'SHOW server_version;')" "$(sql -c 'SELECT public.postgis_lib_version();')"
 
 bash db/goose.sh up
-require_equal "$history" "$(sql "$history_sql")"
+require_equal "$history" "$(sql -c "$history_sql")"
+sql -f - < tests/db/evidence_constraints.sql
+require_equal 0 "$(sql -c 'SELECT count(*) FROM sources.publication_scope;')"
+printf 'PASS clean evidence schema, release and scope constraints, provenance, geometry and synthetic fixture rollback\n'
+
+if rollback_error=$(COMPOSE_PROJECT_NAME=curbos-dev bash db/goose.sh test-down-to-1 2>&1) ||
+  [[ "$rollback_error" != *'Rollback requires the disposable CurbOS database test project'* ]]; then
+  printf 'Expected rollback to reject the development project.\n%s\n' "$rollback_error" >&2
+  exit 1
+fi
+printf 'PASS rollback rejects the development project\n'
+bash db/goose.sh test-down-to-1
+require_equal 0 "$(sql -c "$evidence_applied_sql")"
+require_equal 0 "$(sql -c "SELECT count(*) FROM pg_catalog.pg_namespace WHERE nspname IN ('sources', 'geo', 'rules');")"
+require_equal "$baseline_history" "$(sql -c "$baseline_sql")"
+require_equal 4326 "$(sql -c "$postgis_sql")"
+bash db/goose.sh up
+require_equal 1 "$(sql -c "$evidence_applied_sql")"
+sql -f - < tests/db/evidence_constraints.sql
+require_equal 0 "$(sql -c 'SELECT count(*) FROM sources.publication_scope;')"
+history=$(sql -c "$history_sql")
+bash db/goose.sh up
+require_equal "$history" "$(sql -c "$history_sql")"
+printf 'PASS evidence migration Down and reapply preserve M1 PostGIS and Goose baseline\n'
+
 "${compose[@]}" restart db
 "${compose[@]}" up -d --wait --wait-timeout 90 db
-require_equal "$history" "$(sql "$history_sql")"
+require_equal "$history" "$(sql -c "$history_sql")"
 printf 'PASS repeated migration and ordinary restart preserve Goose history\n'
 
 "${compose[@]}" down
@@ -121,10 +150,10 @@ if migration_error=$(bash db/goose.sh up 2>&1) ||
   exit 1
 fi
 "${compose[@]}" up -d --wait --wait-timeout 90 db
-require_equal "$history" "$(sql "$history_sql")"
-require_equal 4326 "$(sql 'SELECT ST_SRID(ST_SetSRID(ST_MakePoint(0, 0), 4326));')"
+require_equal "$history" "$(sql -c "$history_sql")"
+require_equal 4326 "$(sql -c "$postgis_sql")"
 bash db/goose.sh up
-require_equal "$history" "$(sql "$history_sql")"
+require_equal "$history" "$(sql -c "$history_sql")"
 printf 'PASS stopped DB fails migration and recreated container preserves data\n'
 
 if [[ "$mode" == e2e ]]; then
