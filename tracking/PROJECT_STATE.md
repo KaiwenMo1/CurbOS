@@ -11,9 +11,9 @@ Updated 2026-11-20.
 - **M2 PR-01** Merged in [PR #7](https://github.com/KaiwenMo1/CurbOS/pull/7) as `e0267c0`. The evidence schema enforces release and QA lineage in PostgreSQL.
 - **M2 PR-02** Merged in [PR #8](https://github.com/KaiwenMo1/CurbOS/pull/8) as `f35265b`. The final 30-test synthetic suite and [hosted checks](https://github.com/KaiwenMo1/CurbOS/actions/runs/44702356395) passed. [Capture runbook](../data/cds_capture/README.md)
 - **M2 PR-03** Merged in [PR #9](https://github.com/KaiwenMo1/CurbOS/pull/9) as `f10ec69`. It validates Stage Schema v2 and prepares private candidate packages. [Hosted checks passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44705155071). [Validation runbook](../data/cds_validate/README.md)
-- **M2 PR-04** Implements private candidate registration, independent approval, immutable release evidence, and audited pointer operations restricted to enrolled synthetic fixtures on `m2/pr-04-atomic-publication`. [Publication runbook](../data/cds_publish/README.md)
-- **M2 PR-04 evidence** Locally passed the 55-test synthetic suite, Goose validation, Ruff, `make db-test`, `make api-test`, `make e2e-test`, and `make check`. Competing pointer updates produced one success and one conflict. A forced audit insert failure rolled back the pointer write. The suite used disposable databases.
-- **Next review gate** ChatGPT and human review of the M2 PR-04 draft and synthetic evidence. Real activation requires a separately reviewed authorization boundary and source evidence.
+- **M2 PR-04** Draft [PR #10](https://github.com/KaiwenMo1/CurbOS/pull/10) implements private candidate registration, independent verification and approval, immutable release evidence, and audited pointer operations restricted to enrolled synthetic fixtures. [Publication runbook](../data/cds_publish/README.md)
+- **M2 PR-04 review fix** Additive migration `00004` keeps registrar submissions at `CANDIDATE` until a separate verifier recomputes the evidence from private files and PostgreSQL records its attestation. All 59 local synthetic tests passed, including 18 publication tests. The regressions cover fabricated projections, forged report hashes, verifier impersonation, and conflicting and exact retries.
+- **Next review gate** Independent Review Round 2 on the draft. Real activation requires a separately reviewed authorization boundary and source evidence.
 
 ## M1 acceptance evidence
 

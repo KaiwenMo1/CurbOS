@@ -10,17 +10,17 @@ from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from pathlib import Path
 from secrets import token_urlsafe
-from uuid import UUID
 from unittest.mock import patch
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 import psycopg
 from psycopg import sql
 
-from data.cds_capture import database
+from data.cds_capture import database, files
 from data.cds_capture.__main__ import run as capture
 from data.cds_capture.manifest import CaptureError, canonical, digest, parse_json
-from data.cds_publish.__main__ import register
-from data.cds_validate.__main__ import run as validate
+from data.cds_publish.__main__ import _projection_plan, run as publish
+from data.cds_validate.__main__ import prepare, run as validate
 from fixtures import Bundle, envelope, key, prepare_disposable_database
 from test_validate import area, curb
 
@@ -33,7 +33,7 @@ class Publication(unittest.TestCase):
         prepare_disposable_database()
         cls.passwords = {}
         with database.transaction() as admin:
-            for kind in ("registrar", "reviewer", "operator", "app"):
+            for kind in ("registrar", "verifier", "reviewer", "operator", "app"):
                 user = f"synthetic_pr04_{kind}"
                 password = cls.passwords[kind] = token_urlsafe(24)
                 admin.execute(
@@ -117,15 +117,65 @@ class Publication(unittest.TestCase):
             "expected_report_sha": candidate["report_sha256"],
         }, lineage
 
-    def register(self, params):
+    def publish(self, params, *, verify=False):
+        kind = "verifier" if verify else "registrar"
         with patch.dict(
             os.environ,
             {
-                "PGUSER": "synthetic_pr04_registrar",
-                "PGPASSWORD": self.passwords["registrar"],
+                "PGUSER": f"synthetic_pr04_{kind}",
+                "PGPASSWORD": self.passwords[kind],
             },
         ):
-            return register(**params)
+            return publish(**params, verify=verify)
+
+    def validated(self, params):
+        self.publish(params)
+        return self.publish(params, verify=True)
+
+    def sql_evidence(self, params):
+        with (
+            database.transaction() as admin,
+            files.root(params["stage_dir"], private=True) as staged,
+        ):
+            lineage, candidate_id, records, candidate, summary = prepare(
+                admin, params["batch_id"], params["scope_key"], staged
+            )
+            plan = _projection_plan(admin, records, candidate, summary)
+        return (
+            uuid5(NAMESPACE_URL, f"curbos:cds-release:v1:{candidate_id}"),
+            UUID(candidate_id),
+            params["expected_report_sha"],
+            lineage,
+            plan,
+        )
+
+    def sql_candidate(self, kind, function, evidence):
+        release, candidate, report, lineage, plan = evidence
+        with self.user(kind) as connection:
+            return connection.execute(
+                sql.SQL(
+                    "SELECT publication.{}(%s, %s, %s, %s::jsonb, %s::jsonb)"
+                ).format(sql.Identifier(function)),
+                (
+                    release,
+                    candidate,
+                    report,
+                    canonical(lineage).decode(),
+                    canonical(plan).decode(),
+                ),
+            ).fetchone()[0]
+
+    def assert_pending(self, release_id):
+        with self.user_admin() as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT r.status, v.release_id FROM sources.dataset_release r "
+                    "LEFT JOIN publication.release_verification v USING (release_id) "
+                    "WHERE r.release_id = %s",
+                    (release_id,),
+                ).fetchone(),
+                ("CANDIDATE", None),
+            )
 
     def fixture_gates(self, params, lineage, *, rights=True, scope=True, enrolled=True):
         with database.transaction() as admin:
@@ -184,7 +234,7 @@ class Publication(unittest.TestCase):
 
     def frozen(self, scope=None, **kwargs):
         params, lineage = self.candidate(scope=scope, **kwargs)
-        release = self.register(params)
+        release = self.validated(params)
         self.fixture_gates(params, lineage)
         self.approve(release, self.evidence(release, lineage))
         self.freeze(release)
@@ -269,9 +319,14 @@ class Publication(unittest.TestCase):
         params, lineage = self.candidate(
             zones=[curb(1, areas=[key(300)])], areas=[area(300, [key(1)])]
         )
-        release = self.register(params)
-        self.assertEqual(self.register(params), release)
+        submitted = self.publish(params)
+        self.assertEqual(submitted["status"], "CANDIDATE")
+        self.assertEqual(self.publish(params), submitted)
+        release = self.publish(params, verify=True)
+        self.assertEqual(self.publish(params, verify=True), release)
         self.assertEqual(release["status"], "VALIDATED")
+        self.assertEqual(release["verified_by"], "synthetic_pr04_verifier")
+        self.assertEqual(release["plan_sha256"], submitted["plan_sha256"])
         with database.transaction() as admin:
             row = admin.execute(
                 "SELECT b.batch_id, b.scope_key, e.lineage, e.registered_by, "
@@ -300,19 +355,135 @@ class Publication(unittest.TestCase):
         self.assertEqual(links, [(key(300), key(1))])
         self.assertIsNone(self.pointer())
 
+    def test_fabricated_sql_plan_stays_pending_and_cannot_be_changed(self):
+        params, _ = self.candidate()
+        evidence = self.sql_evidence(params)
+        plan = evidence[-1]
+        fabricated = evidence[:-1] + (
+            plan | {"zones": [plan["zones"][0] | {"source_num_spaces": 999}]},
+        )
+        self.assertEqual(
+            self.sql_candidate("registrar", "register_candidate", fabricated)["status"],
+            "CANDIDATE",
+        )
+        with self.assertRaisesRegex(CaptureError, "DATABASE_TRANSACTION_FAILED"):
+            self.publish(params, verify=True)
+        self.expect_db_error(
+            "CANDIDATE_VERIFICATION_MISMATCH",
+            lambda: self.sql_candidate("verifier", "verify_candidate", evidence),
+        )
+        self.expect_db_error(
+            "CANDIDATE_REPLAY_CONFLICT",
+            lambda: self.sql_candidate("registrar", "register_candidate", evidence),
+        )
+        for statement, message in (
+            (
+                "UPDATE sources.dataset_release SET status = 'VALIDATED' WHERE release_id = %s",
+                "CANDIDATE_VERIFICATION_REQUIRED",
+            ),
+            (
+                "UPDATE geo.release_curb_zone SET source_num_spaces = 0 WHERE release_id = %s",
+                "RELEASE_PROJECTION_IMMUTABLE",
+            ),
+        ):
+            with self.assertRaisesRegex(psycopg.Error, message):
+                with self.user_admin() as admin:
+                    admin.execute(statement, (evidence[0],))
+        self.assert_pending(evidence[0])
+
+    def test_forged_report_hash_is_never_a_verification_receipt(self):
+        params, _ = self.candidate()
+        evidence = self.sql_evidence(params)
+        forged = evidence[:2] + ("0" * 64,) + evidence[3:]
+        self.sql_candidate("registrar", "register_candidate", forged)
+        with self.assertRaisesRegex(CaptureError, "CANDIDATE_REPORT_DIGEST_MISMATCH"):
+            self.publish(params | {"expected_report_sha": forged[2]}, verify=True)
+        self.expect_db_error(
+            "CANDIDATE_VERIFICATION_MISMATCH",
+            lambda: self.sql_candidate("verifier", "verify_candidate", evidence),
+        )
+        self.assert_pending(evidence[0])
+
+    def test_registrar_cannot_verify_or_use_legacy_registration(self):
+        params, _ = self.candidate()
+        evidence = self.sql_evidence(params)
+        self.publish(params)
+        for function in ("verify_candidate", "register_candidate_v3"):
+            with self.subTest(function=function):
+                with self.assertRaises(psycopg.errors.InsufficientPrivilege):
+                    self.sql_candidate("registrar", function, evidence)
+        for statement in (
+            "SET ROLE curbos_publication_verifier",
+            "INSERT INTO publication.release_verification DEFAULT VALUES",
+        ):
+            with self.assertRaises(psycopg.errors.InsufficientPrivilege):
+                with self.user("registrar") as connection:
+                    connection.execute(statement)
+        with self.user_admin() as connection:
+            connection.execute(
+                "GRANT curbos_publication_verifier TO synthetic_pr04_registrar"
+            )
+        try:
+            self.expect_db_error(
+                "INDEPENDENT_VERIFIER_REQUIRED",
+                lambda: self.sql_candidate("registrar", "verify_candidate", evidence),
+            )
+        finally:
+            with self.user_admin() as connection:
+                connection.execute(
+                    "REVOKE curbos_publication_verifier FROM synthetic_pr04_registrar"
+                )
+        self.assert_pending(evidence[0])
+
+    def test_verified_replay_checks_evidence_and_requires_independent_review(self):
+        params, lineage = self.candidate()
+        release = self.validated(params)
+        evidence = self.sql_evidence(params)
+        different = evidence[:2] + ("0" * 64,) + evidence[3:]
+        self.expect_db_error(
+            "CANDIDATE_VERIFICATION_MISMATCH",
+            lambda: self.sql_candidate("verifier", "verify_candidate", different),
+        )
+        self.fixture_gates(params, lineage)
+        with self.user_admin() as connection:
+            connection.execute(
+                "GRANT curbos_publication_reviewer TO synthetic_pr04_verifier"
+            )
+        try:
+            with self.assertRaisesRegex(
+                psycopg.Error, "REVIEWER_MUST_BE_INDEPENDENT_OF_VERIFIER"
+            ):
+                with self.user("verifier") as connection:
+                    connection.execute(
+                        "SELECT publication.approve_release(%s, %s::jsonb)",
+                        (
+                            evidence[0],
+                            canonical(self.evidence(release, lineage)).decode(),
+                        ),
+                    )
+        finally:
+            with self.user_admin() as connection:
+                connection.execute(
+                    "REVOKE curbos_publication_reviewer FROM synthetic_pr04_verifier"
+                )
+        self.approve(release, self.evidence(release, lineage))
+        self.freeze(release)
+        repeat = self.publish(params, verify=True)
+        self.assertEqual(repeat, release | {"status": "FROZEN"})
+
     def test_corrupted_digest_fails_closed(self):
         params, _ = self.candidate()
         with self.assertRaisesRegex(CaptureError, "CANDIDATE_REPORT_DIGEST_MISMATCH"):
-            self.register(params | {"expected_report_sha": "0" * 64})
+            self.publish(params | {"expected_report_sha": "0" * 64})
         self.assertIsNone(self.pointer())
 
     def test_cross_batch_and_scope_rejected(self):
         params, _ = self.candidate()
         other, _ = self.candidate()
         with self.assertRaisesRegex(CaptureError, "CANDIDATE_IDENTITY_MISMATCH"):
-            self.register(other | {"candidate_dir": params["candidate_dir"]})
+            self.publish(other | {"candidate_dir": params["candidate_dir"]})
         with self.assertRaisesRegex(CaptureError, "BATCH_SCOPE_MISMATCH"):
-            self.register(params | {"scope_key": "synthetic-other"})
+            self.publish(params | {"scope_key": "synthetic-other"})
         self.assertIsNone(self.pointer())
 
     def test_missing_policy_link_fails_even_with_new_checksums(self):
@@ -321,7 +492,7 @@ class Publication(unittest.TestCase):
             params, lambda candidate: candidate["zone_policy_links"].clear()
         )
         with self.assertRaisesRegex(CaptureError, "CANDIDATE_FILE_MISMATCH"):
-            self.register(params)
+            self.publish(params)
         self.assertIsNone(self.pointer())
 
     def test_dangling_area_link_fails_even_with_new_checksums(self):
@@ -333,7 +504,7 @@ class Publication(unittest.TestCase):
             lambda candidate: candidate["area_zone_links"][0].update(area_id=key(999)),
         )
         with self.assertRaisesRegex(CaptureError, "CANDIDATE_FILE_MISMATCH"):
-            self.register(params)
+            self.publish(params)
 
     def test_reviewed_exclusion_and_unrepresentable_line_are_withheld(self):
         precise = {
@@ -347,7 +518,7 @@ class Publication(unittest.TestCase):
                 curb(3, geometry=precise),
             ]
         )
-        release = self.register(params)
+        release = self.validated(params)
         self.fixture_gates(params, lineage)
         self.assertEqual(release["review_required"], ["zones:1"])
         self.assertEqual(release["summary"]["projected"]["zones"], 1)
@@ -381,7 +552,7 @@ class Publication(unittest.TestCase):
                 params, lineage = self.candidate(
                     scope=scope, production_like=variant == "production_like"
                 )
-                release = self.register(params)
+                release = self.validated(params)
                 self.fixture_gates(
                     params,
                     lineage,

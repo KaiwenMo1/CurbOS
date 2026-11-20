@@ -172,7 +172,7 @@ M2 PR-02 verifies a local manifest and captures DS13 Zones and DS11 Policies, wi
 
 ### Private release preparation
 
-The offline validator prepares private candidate packages. Migration `00003` adds private candidate registration, independent approval, frozen projections, and an audited pointer workflow gated to administrator-enrolled synthetic fixtures. Real releases remain private. The local `curbos` database owner is for administration. Use a separate least-privileged login for the API. [Validation runbook](data/cds_validate/README.md) [Publication runbook](data/cds_publish/README.md)
+The offline validator prepares private candidate packages. Apply through migration `00004` for private registration, independent candidate verification and approval, frozen projections, and an audited pointer workflow gated to administrator-enrolled synthetic fixtures. Real releases remain private. The local `curbos` database owner is for administration. Use a separate least-privileged login for the API. [Validation runbook](data/cds_validate/README.md) [Publication runbook](data/cds_publish/README.md)
 
 ### Browser-to-database quality gate
 

@@ -164,6 +164,7 @@ require_equal 4326 "$(sql -c "$postgis_sql")"
 bash db/goose.sh up
 require_equal 1 "$(sql -c "$evidence_applied_sql")"
 require_equal 1 "$(sql -c "SELECT count(*) FROM pg_catalog.pg_namespace WHERE nspname = 'publication';")"
+require_equal publication.release_verification "$(sql -c "SELECT to_regclass('publication.release_verification');")"
 require_equal 0 "$(sql -c 'SELECT count(*) FROM sources.publication_scope;')"
 history=$(sql -c "$history_sql")
 bash db/goose.sh up

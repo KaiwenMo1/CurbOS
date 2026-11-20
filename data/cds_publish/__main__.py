@@ -1,4 +1,4 @@
-"""Register a verified private CDS candidate using the registrar role."""
+"""Submit or independently verify a private CDS candidate."""
 
 import argparse
 import os
@@ -150,7 +150,7 @@ def _projection_plan(connection, records, candidate, summary):
     return plan
 
 
-def register(
+def run(
     batch_id,
     scope_key,
     stage_dir,
@@ -158,6 +158,7 @@ def register(
     expected_report_sha,
     *,
     db_socket_dir=None,
+    verify=False,
 ):
     if not re.fullmatch(r"[0-9a-f]{64}", expected_report_sha):
         raise CaptureError("INVALID_CANDIDATE_REPORT_DIGEST")
@@ -169,7 +170,8 @@ def register(
         if os.path.samestat(os.fstat(staged), os.fstat(package)):
             raise CaptureError("OVERLAPPING_VALIDATION_PATHS")
         with database.transaction(db_socket_dir) as connection:
-            connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            if not verify:
+                connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
             lineage, candidate_id, records, candidate, summary = prepare(
                 connection, batch_id, scope_key, staged
             )
@@ -183,8 +185,13 @@ def register(
 
             plan = _projection_plan(connection, records, candidate, summary)
             release_id = uuid5(NAMESPACE_URL, f"curbos:cds-release:v1:{candidate_id}")
+            statement = (
+                "SELECT publication.verify_candidate(%s, %s, %s, %s::jsonb, %s::jsonb)"
+                if verify
+                else "SELECT publication.register_candidate(%s, %s, %s, %s::jsonb, %s::jsonb)"
+            )
             result = connection.execute(
-                "SELECT publication.register_candidate(%s, %s, %s, %s::jsonb, %s::jsonb)",
+                statement,
                 (
                     release_id,
                     UUID(candidate_id),
@@ -214,8 +221,11 @@ def main():
     parser.add_argument("--candidate-dir", required=True, type=Path)
     parser.add_argument("--expected-report-sha", required=True)
     parser.add_argument("--db-socket-dir", type=Path)
+    parser.add_argument(
+        "--verify", action="store_true", help="use the independent verifier login"
+    )
     try:
-        result = register(**vars(parser.parse_args()))
+        result = run(**vars(parser.parse_args()))
     except (CaptureError, OSError) as error:
         code = (
             error.code
