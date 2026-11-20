@@ -47,10 +47,15 @@ DECLARE
   artifact_b constant uuid := '00000000-0000-4000-8000-000000000202';
   batch_a constant uuid := '00000000-0000-4000-8000-000000000301';
   batch_b constant uuid := '00000000-0000-4000-8000-000000000302';
+  batch_a_other constant uuid := '00000000-0000-4000-8000-000000000303';
+  batch_unscoped constant uuid := '00000000-0000-4000-8000-000000000304';
+  batch_missing constant uuid := '00000000-0000-4000-8000-000000000305';
   release_a constant uuid := '00000000-0000-4000-8000-000000000401';
   release_a_next constant uuid := '00000000-0000-4000-8000-000000000402';
   release_b constant uuid := '00000000-0000-4000-8000-000000000403';
+  release_invalid constant uuid := '00000000-0000-4000-8000-000000000404';
   resource constant uuid := '00000000-0000-4000-8000-000000000501';
+  qa_invalid constant uuid := '00000000-0000-4000-8000-000000000603';
   line constant public.geometry := public.ST_GeomFromText('LINESTRING(0 0, 1 1)', 4326);
 BEGIN
   INSERT INTO sources.publication_scope (scope_key, display_name)
@@ -81,12 +86,44 @@ BEGIN
 
   INSERT INTO sources.import_batch (batch_id, scope_key, adapter_version, source_profile_version, capture_manifest_sha256)
     VALUES (batch_a, 'synthetic-a', 'synthetic-v1', 'synthetic-v1', digest),
-           (batch_b, 'synthetic-b', 'synthetic-v1', 'synthetic-v1', digest);
+           (batch_b, 'synthetic-b', 'synthetic-v1', 'synthetic-v1', digest),
+           (batch_a_other, 'synthetic-a', 'synthetic-v1', 'synthetic-v1', digest),
+           (batch_unscoped, NULL, 'synthetic-v1', 'synthetic-v1', digest);
   INSERT INTO sources.import_artifact (batch_id, component_role, artifact_id)
     VALUES (batch_a, 'zones', artifact_a), (batch_b, 'zones', artifact_b);
   INSERT INTO sources.dataset_release (release_id, batch_id, scope_key)
     VALUES (release_a, batch_a, 'synthetic-a'), (release_a_next, batch_a, 'synthetic-a'),
            (release_b, batch_b, 'synthetic-b');
+
+  PERFORM pg_temp.expect_violation('release referencing batch in another scope',
+    format('INSERT INTO sources.dataset_release (release_id, batch_id, scope_key) VALUES (%L, %L, %L)',
+      release_invalid, batch_b, 'synthetic-a'),
+    '23503', 'dataset_release_batch_scope_fk');
+  PERFORM pg_temp.expect_violation('release referencing an unscoped batch',
+    format('INSERT INTO sources.dataset_release (release_id, batch_id, scope_key) VALUES (%L, %L, %L)',
+      release_invalid, batch_unscoped, 'synthetic-a'),
+    '23503', 'dataset_release_batch_scope_fk');
+  PERFORM pg_temp.expect_violation('clearing scope on a batch with releases',
+    format('UPDATE sources.import_batch SET scope_key = NULL WHERE batch_id = %L', batch_a),
+    '23503', 'dataset_release_batch_scope_fk');
+
+  INSERT INTO sources.qa_issue (qa_id, batch_id, release_id, source_object_type, issue_code, severity, disposition)
+    VALUES ('00000000-0000-4000-8000-000000000601', batch_a, release_a, 'ZONE', 'SYNTHETIC_QA', 'INFO', 'RECORDED'),
+           ('00000000-0000-4000-8000-000000000602', batch_unscoped, NULL, 'BATCH', 'SYNTHETIC_QA', 'INFO', 'RECORDED');
+  PERFORM pg_temp.expect_violation('QA linking a release from another batch in the same scope',
+    format('INSERT INTO sources.qa_issue
+            (qa_id, batch_id, release_id, source_object_type, issue_code, severity, disposition)
+            VALUES (%L, %L, %L, %L, %L, %L, %L)',
+      qa_invalid, batch_a_other, release_a, 'ZONE', 'SYNTHETIC_QA', 'INFO', 'RECORDED'),
+    '23503', 'qa_issue_batch_release_fk');
+  PERFORM pg_temp.expect_violation('batch-only QA referencing a missing batch',
+    format('INSERT INTO sources.qa_issue (qa_id, batch_id, source_object_type, issue_code, severity, disposition)
+            VALUES (%L, %L, %L, %L, %L, %L)',
+      qa_invalid, batch_missing, 'BATCH', 'SYNTHETIC_QA', 'INFO', 'RECORDED'),
+    '23503', 'qa_issue_batch_id_fkey');
+  PERFORM pg_temp.expect_violation('moving a release with QA to another batch in the same scope',
+    format('UPDATE sources.dataset_release SET batch_id = %L WHERE release_id = %L', batch_a_other, release_a),
+    '23503', 'qa_issue_batch_release_fk');
 
   IF EXISTS (SELECT 1 FROM sources.dataset_release WHERE status <> 'CANDIDATE')
     OR EXISTS (SELECT 1 FROM sources.active_release) THEN

@@ -53,7 +53,8 @@ CREATE TABLE sources.import_batch (
   status text NOT NULL DEFAULT 'CAPTURED'
     CHECK (status IN ('CAPTURED', 'STAGED', 'VALIDATED', 'REJECTED')),
   validation_report_sha256 text CHECK (validation_report_sha256 ~ '^[0-9a-f]{64}$'),
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (batch_id, scope_key)
 );
 
 CREATE TABLE sources.import_artifact (
@@ -65,8 +66,8 @@ CREATE TABLE sources.import_artifact (
 
 CREATE TABLE sources.dataset_release (
   release_id uuid PRIMARY KEY,
-  batch_id uuid NOT NULL REFERENCES sources.import_batch(batch_id) ON DELETE RESTRICT,
-  scope_key text NOT NULL REFERENCES sources.publication_scope(scope_key) ON DELETE RESTRICT,
+  batch_id uuid NOT NULL,
+  scope_key text NOT NULL,
   status text NOT NULL DEFAULT 'CANDIDATE'
     CHECK (status IN ('CANDIDATE', 'VALIDATED', 'APPROVED', 'FROZEN', 'REJECTED')),
   validation_report_sha256 text CHECK (validation_report_sha256 ~ '^[0-9a-f]{64}$'),
@@ -76,6 +77,9 @@ CREATE TABLE sources.dataset_release (
   source_as_of timestamptz,
   exclusion_summary jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(exclusion_summary) = 'object'),
   UNIQUE (scope_key, release_id),
+  UNIQUE (batch_id, release_id),
+  CONSTRAINT dataset_release_batch_scope_fk
+    FOREIGN KEY (batch_id, scope_key) REFERENCES sources.import_batch(batch_id, scope_key) ON DELETE RESTRICT,
   CONSTRAINT dataset_release_frozen_metadata_check CHECK (
     status <> 'FROZEN' OR (
       frozen_at IS NOT NULL AND approved_by IS NOT NULL AND approved_at IS NOT NULL
@@ -169,14 +173,17 @@ CREATE TABLE sources.release_area_zone (
 CREATE TABLE sources.qa_issue (
   qa_id uuid PRIMARY KEY,
   batch_id uuid NOT NULL REFERENCES sources.import_batch(batch_id) ON DELETE RESTRICT,
-  release_id uuid REFERENCES sources.dataset_release(release_id) ON DELETE RESTRICT,
+  release_id uuid,
   source_object_type text NOT NULL,
   source_object_id text,
   issue_code text NOT NULL,
   severity text NOT NULL,
   disposition text NOT NULL,
   evidence_ref text,
-  observed_at timestamptz NOT NULL DEFAULT now()
+  observed_at timestamptz NOT NULL DEFAULT now(),
+  -- With a null release_id, only the required batch reference applies.
+  CONSTRAINT qa_issue_batch_release_fk
+    FOREIGN KEY (batch_id, release_id) REFERENCES sources.dataset_release(batch_id, release_id) MATCH SIMPLE ON DELETE RESTRICT
 );
 
 CREATE TABLE sources.active_release (
