@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import type { ErrorEvent as MapErrorEvent, Map as LibreMap } from 'maplibre-gl'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
+import type { ErrorEvent as MapErrorEvent, Map as LibreMap, MapLayerMouseEvent } from 'maplibre-gl'
 import workerURL from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url&no-inline'
+import type { Bounds, Zone } from './discovery/client'
 
 const startupTimeoutMs = 15_000
+const evidenceLayer = 'curbos-source-evidence'
 
 function permittedStyleURL(value?: string) {
   const candidate = value?.trim()
@@ -21,9 +23,51 @@ function permittedStyleURL(value?: string) {
   }
 }
 
-function MapCanvas({ styleURL }: { styleURL: string }) {
+type Evidence = {
+  features: Zone[]
+  onBounds(bounds: Bounds | null): void
+  onSelect(id: string): void
+}
+
+function MapCanvas({ styleURL, evidence }: { styleURL: string; evidence?: Evidence }) {
   const container = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<LibreMap | undefined>(undefined)
   const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading')
+  const [failedFeatures, setFailedFeatures] = useState<Zone[]>()
+  const sourceVersion = useRef(0)
+  const discoveryEnabled = Boolean(evidence)
+  const features = evidence?.features
+  const publishBounds = useEffectEvent((bounds: Bounds | null) => evidence?.onBounds(bounds))
+  const selectFeature = useEffectEvent((id: string) => evidence?.onSelect(id))
+
+  useLayoutEffect(() => {
+    const map = mapRef.current
+    if (!map || status !== 'ready' || !features?.length) return
+
+    // Each view gets its own worker source. Remove the previous layer before
+    // paint so MapLibre cannot substitute old tiles while the next source loads.
+    const source = `${evidenceLayer}-${++sourceVersion.current}`
+    let current = true
+    let added = false
+    try {
+      map.addSource(source, { type: 'geojson', promoteId: 'source_zone_id', data: {
+        type: 'FeatureCollection', features: features.map(({ type, id, geometry }) =>
+          ({ type, geometry, properties: { source_zone_id: id } })),
+      } })
+      added = true
+      map.addLayer({ id: evidenceLayer, source, type: 'line',
+        layout: { 'line-cap': 'round' }, paint: { 'line-color': '#64728c', 'line-width': 4 },
+      })
+    } catch {
+      queueMicrotask(() => { if (current) setFailedFeatures(features) })
+    }
+    return () => {
+      current = false
+      if (mapRef.current !== map || !added) return
+      if (map.getLayer(evidenceLayer)) map.removeLayer(evidenceLayer)
+      if (map.getSource(source)) map.removeSource(source)
+    }
+  }, [features, status])
 
   useEffect(() => {
     const element = container.current
@@ -39,9 +83,16 @@ function MapCanvas({ styleURL }: { styleURL: string }) {
       if (!activeMap) return
 
       map = undefined
+      mapRef.current = undefined
       activeMap.off('load', onLoad)
       activeMap.off('error', onError)
       activeMap.off('webglcontextlost', markUnavailable)
+      if (discoveryEnabled && loaded) {
+        activeMap.off('moveend', onBounds)
+        activeMap.off('resize', onBounds)
+        activeMap.off('click', evidenceLayer, onSelect)
+        publishBounds(null)
+      }
       activeMap.remove()
     }
 
@@ -56,11 +107,34 @@ function MapCanvas({ styleURL }: { styleURL: string }) {
     }
 
     function onLoad() {
-      if (stopped) return
+      if (stopped || loaded || !map) return
 
       loaded = true
       window.clearTimeout(startupTimeout)
+      if (discoveryEnabled) {
+        try {
+          if (map.getLayer(evidenceLayer)) throw new Error('Reserved evidence layer already exists')
+          map.on('moveend', onBounds)
+          map.on('resize', onBounds)
+          map.on('click', evidenceLayer, onSelect)
+          onBounds()
+        } catch {
+          markUnavailable()
+          return
+        }
+      }
+      mapRef.current = map
       setStatus('ready')
+    }
+
+    function onBounds() {
+      const bounds = map?.getBounds()
+      if (bounds) publishBounds([bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()])
+    }
+
+    function onSelect(event: MapLayerMouseEvent) {
+      const id = event.features?.[0]?.id
+      if (typeof id === 'string') selectFeature(id)
     }
 
     function onError({ error }: MapErrorEvent) {
@@ -98,13 +172,14 @@ function MapCanvas({ styleURL }: { styleURL: string }) {
       window.clearTimeout(startupTimeout)
       removeMap()
     }
-  }, [styleURL])
+  }, [discoveryEnabled, styleURL])
 
   return (
     <>
       <div className="map-canvas" ref={container} inert={status !== 'ready'} />
       <div className="map-message" role="status">
         {status === 'loading' && <p>Loading basemap…</p>}
+        {status === 'ready' && failedFeatures && failedFeatures === features && <p>Map evidence layer unavailable. Use the source segment selector.</p>}
         {status === 'unavailable' && (
           <>
             <span className="map-symbol" aria-hidden="true" />
@@ -117,13 +192,13 @@ function MapCanvas({ styleURL }: { styleURL: string }) {
   )
 }
 
-export function MapViewport({ styleURL }: { styleURL?: string }) {
+export function MapViewport({ styleURL, evidence }: { styleURL?: string; evidence?: Evidence }) {
   const style = permittedStyleURL(styleURL)
 
   return (
     <section className="map-viewport" aria-label="Map viewport">
       {style ? (
-        <MapCanvas key={style} styleURL={style} />
+        <MapCanvas key={style} styleURL={style} evidence={evidence} />
       ) : (
         <div className="map-message">
           <span className="map-symbol" aria-hidden="true" />

@@ -2,7 +2,7 @@
 
 Updated 2026-11-21.
 
-- **Milestone** M2 PR-05, Release-Pinned Discovery API. M1 foundation merged.
+- **Milestone** M2 PR-06, Evidence-Aware MapLibre Discovery. M1 foundation merged.
 - **PR-01** Merged in [PR #1](https://github.com/KaiwenMo1/CurbOS/pull/1) as `d023604`. [PR CI passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44622343482).
 - **PR-02** Merged in [PR #2](https://github.com/KaiwenMo1/CurbOS/pull/2) as `bcfe3ec`. The [PR CI run passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44624913175).
 - **PR-03** Merged in [PR #3](https://github.com/KaiwenMo1/CurbOS/pull/3) as `91bfbad`. The API provides process liveness and bounded PostgreSQL readiness with the PostGIS and Goose baseline. [PR CI passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44628781477).
@@ -12,9 +12,9 @@ Updated 2026-11-21.
 - **M2 PR-02** Merged in [PR #8](https://github.com/KaiwenMo1/CurbOS/pull/8) as `f35265b`. The final 30-test synthetic suite and [hosted checks](https://github.com/KaiwenMo1/CurbOS/actions/runs/44702356395) passed. [Capture runbook](../data/cds_capture/README.md)
 - **M2 PR-03** Merged in [PR #9](https://github.com/KaiwenMo1/CurbOS/pull/9) as `f10ec69`. It validates Stage Schema v2 and prepares private candidate packages. [Hosted checks passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44705155071). [Validation runbook](../data/cds_validate/README.md)
 - **M2 PR-04** Merged in [PR #10](https://github.com/KaiwenMo1/CurbOS/pull/10) as `47776d3`. Private registration, independent verification and approval, and audited pointer changes are available for enrolled synthetic fixtures. [Publication runbook](../data/cds_publish/README.md)
-- **M2 PR-05** Adds the three pinned Discovery endpoints and an isolated synthetic read path on `m2/pr-05-pinned-read-api`. Go and PostgreSQL integration tests passed, including a lock-controlled pointer switch, withdrawal, scope and rights changes, and least-privilege checks. All 59 CDS tests and the existing Chromium integration gate passed. [Discovery API contract](../contracts/openapi/DISCOVERY.md)
-- **M2 PR-05 review fix** [Draft PR #11](https://github.com/KaiwenMo1/CurbOS/pull/11) adds migration `00006` so scope withdrawal closes historical pins and cursors. The disposable API test reproduced the prior leak and verified withdrawal, failed withdrawal, and explicit reactivation behavior. [Discovery runbook](../contracts/openapi/DISCOVERY.md)
-- **Next review gate** Independent Review Round 2 on Draft PR #11. Ordinary API reads show no authorized public release. Real data requires separate approval.
+- **M2 PR-05** Merged in [PR #11](https://github.com/KaiwenMo1/CurbOS/pull/11) as `b54c54e`. The pinned Discovery API closes historical pins and cursors on scope withdrawal. [Discovery API contract](../contracts/openapi/DISCOVERY.md)
+- **M2 PR-06** Adds the release-aware frontend and isolated synthetic rendering checks on `m2/pr-06-maplibre-discovery-ui`. All 48 frontend tests passed. Chromium verified the ordinary no-public-release path through Go/PostGIS and real MapLibre rendering, pinned details, keyboard access, and withdrawal with mocked synthetic responses. [Frontend runbook](../apps/web/DISCOVERY.md)
+- **Next review gate** Independent ChatGPT and human review of the M2 PR-06 draft. The ordinary build displays no verified parking data. Public release authorization requires separate review.
 
 ## M1 acceptance evidence
 

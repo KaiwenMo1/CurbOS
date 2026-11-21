@@ -4,6 +4,7 @@ import App from './App'
 
 beforeEach(() => {
   vi.stubEnv('VITE_MAP_STYLE_URL', undefined)
+  vi.stubEnv('VITE_PARKING_SCOPE', undefined)
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
 })
 

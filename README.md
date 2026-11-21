@@ -92,7 +92,7 @@ To exercise a database outage, run these steps against your local development pr
 2. Run `docker compose -f compose.yaml up -d --wait --wait-timeout 90 db` and select **Check again**. Expect **Backend ready** on the same page.
 3. Press Ctrl+C in the Vite and Go terminals to stop them. Run `docker compose -f compose.yaml down` to stop the database and retain its named volume.
 
-For a connection error, first check `curl -i http://127.0.0.1:8080/readyz`, then `/readyz` at the Vite origin. The expected ready response is HTTP 200 with JSON `{"status":"ready"}`. An HTML response usually indicates a missing proxy route. Serve a production build behind a same-origin `/readyz` route to Go if deploying it later. Vite's development and preview proxies are for local use.
+For a connection error, first check `curl -i http://127.0.0.1:8080/readyz`, then `/readyz` at the Vite origin. The expected ready response is HTTP 200 with JSON `{"status":"ready"}`. An HTML response usually indicates a missing proxy route. Serve a production build behind same-origin `/readyz` and `/v1/parking/` routes to Go if deploying it later. Vite's development and preview proxies are for local use.
 
 ### Optional basemap
 
@@ -103,6 +103,10 @@ To enable a basemap, copy `apps/web/.env.example` to the ignored `apps/web/.env.
 Review the style and each resource it references before enabling it. The browser fetches the style, source metadata, tiles, sprites, and fonts directly when needed. Provider requests expose the viewer's IP address and can reveal the viewed map area. Confirm that each provider permits this use, ensure its required attribution appears through MapLibre's attribution control, and check CORS and any deployed Content Security Policy for the approved origins, including support for the same-origin MapLibre worker.
 
 If the configured basemap cannot initialize within 15 seconds, fails to load, reports a worker failure, or loses its WebGL2 context, the shell shows **Map rendering unavailable**. Check WebGL2 support, the worker request, the style URL, resource availability, and CORS, then reload. The parking-data notice appears above the map in every basemap state.
+
+### Optional parking evidence scope
+
+Set `VITE_PARKING_SCOPE` only to an explicitly approved scope key. With this setting unset, the frontend sends no Discovery requests. The current Go API returns no public release for known scopes. Synthetic evidence appears only in isolated tests. [Frontend Discovery runbook](apps/web/DISCOVERY.md)
 
 ## API configuration and health contract
 
@@ -201,7 +205,7 @@ npm --prefix apps/web exec -- playwright install --only-shell chromium
 make e2e-test
 ```
 
-`make e2e-test` starts and migrates an isolated Compose database, runs the Go integration test, starts the Go binary and the built frontend, and opens Chromium through Vite's loopback preview origin. It verifies readiness, a paused database, recovery on the same page, a stopped API, and an offline browser. A temporary synthetic background style exercises real MapLibre without a provider or parking data. The suite checks the no-data notice across states and the canvas identity across trip mode and readiness changes.
+`make e2e-test` starts and migrates an isolated Compose database, runs the Go integration tests, starts the Go binary and the built frontend, and opens Chromium through Vite's loopback preview origin. It verifies readiness, no public release, a paused database, recovery on the same page, a stopped API, and an offline browser. A separate scratch build verifies real MapLibre rendering, keyboard detail, and withdrawal with mocked synthetic Discovery responses. Both browser runs use a temporary background style without an external provider. [Browser test isolation](apps/web/DISCOVERY.md)
 
 The browser test validates the disposable Compose project's label and published port before pausing its database. The harness uses ephemeral loopback ports, a random test password, and temporary build output. The browser receives no database credentials. On success, failure, SIGINT, or SIGTERM, the harness shuts down the test services and removes the temporary build and disposable volume. The GitHub Actions database job runs this combined database, API, and Chromium check.
 

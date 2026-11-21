@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { chromium } from 'playwright'
 import { build, resolveConfig } from 'vite'
+import { a, detail as fixtureDetail, page as fixturePage, release as fixtureRelease, scope, uid } from '../src/discovery/testFixtures.ts'
 
 const {
   COMPOSE_PROJECT_NAME: project,
@@ -158,6 +159,85 @@ async function waitForDatabase(apiOrigin) {
   assert.fail('The same Go API did not recover PostgreSQL readiness')
 }
 
+async function checkEvidenceLayout(page, width, height) {
+  await page.setViewportSize({ width, height })
+  const warning = page.getByText('No verified parking data available.', { exact: true })
+  const map = page.getByRole('region', { name: 'Map viewport' })
+  await warning.waitFor()
+  const [warningBox, mapBox] = await Promise.all([warning.boundingBox(), map.boundingBox()])
+  assert(warningBox && mapBox && warningBox.y < mapBox.y, 'The parking warning must stay above the map')
+  assert(await page.evaluate(() => globalThis.document.documentElement.scrollWidth <= globalThis.innerWidth), 'Page overflowed its viewport')
+}
+
+async function checkSyntheticRendering(origin) {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+  try {
+    const page = await context.newPage()
+    page.setDefaultTimeout(10_000)
+    let withdrawn = false
+    const detailRequests = []
+    const errors = []
+    page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
+    await page.route('**/readyz', (route) => route.fulfill({ json: { status: 'ready' } }))
+    await page.route('**/v1/parking/**', async (route) => {
+      const url = new URL(route.request().url())
+      assert.equal(url.origin, origin)
+      assert.equal(url.searchParams.get('scope'), scope)
+      if (url.pathname.endsWith('/current')) {
+        await route.fulfill({ json: withdrawn ? fixtureRelease(null, 2, 'WITHDRAWN') : fixtureRelease() })
+      } else if (url.pathname.endsWith('/map')) {
+        assert.equal(url.searchParams.get('release_id'), a)
+        assert.equal(url.searchParams.get('bbox')?.split(',').length, 4)
+        await route.fulfill({ contentType: 'application/geo+json', body: JSON.stringify(fixturePage()) })
+      } else {
+        detailRequests.push(url)
+        assert.equal(url.pathname, `/v1/parking/zones/${uid(1)}`)
+        assert.equal(url.searchParams.get('release_id'), a)
+        if (withdrawn) await route.fulfill({ status: 410, json: { error: { code: 'RELEASE_WITHDRAWN' } } })
+        else await route.fulfill({ json: fixtureDetail() })
+      }
+    })
+    await page.goto(origin)
+    await checkEvidenceLayout(page, 1440, 900)
+    const picker = page.getByRole('combobox', { name: 'Source segment' })
+    const details = page.getByRole('region', { name: 'Source segment details' })
+    await picker.waitFor()
+    await page.getByText('Synthetic test data', { exact: true }).waitFor()
+    await page.getByText(/Source-reported curb segment/).waitFor()
+    const canvas = page.locator('.map-canvas:not([inert]) canvas')
+    // The fixture runs horizontally through the style's center. Wait for a real
+    // rendered-feature hit rather than replacing MapLibre's click handler.
+    for (let attempt = 0; attempt < 15 && !await details.isVisible(); attempt++) {
+      await canvas.click()
+      if (!await details.isVisible()) await delay(100)
+    }
+    await details.getByText('SOURCE_REPORTED', { exact: true }).waitFor()
+    assert.equal(await details.getByText('UNKNOWN', { exact: true }).count(), 3)
+    assert.equal(await details.getByText(uid(1200), { exact: true }).count(), 1)
+    assert.equal(await details.getByText('private-reviewer-sentinel').count(), 0)
+    assert.equal(detailRequests.length, 1)
+    await details.getByRole('button', { name: 'Close details' }).click()
+    await checkEvidenceLayout(page, 375, 812)
+    await picker.waitFor()
+    await picker.focus()
+    await picker.press('ArrowDown')
+    await details.getByText('UNVERIFIED', { exact: true }).waitFor()
+    assert.equal(await picker.evaluate((element) => element === element.ownerDocument.activeElement), true)
+    await details.getByRole('button', { name: 'Close details' }).click()
+    withdrawn = true
+    await picker.press('ArrowDown')
+    await page.getByText('Parking evidence was withdrawn.', { exact: true }).waitFor()
+    assert.equal(await details.count(), 0)
+    assert.equal(await picker.count(), 0)
+    assert.equal(await page.getByText(/Source-reported curb segment/).count(), 0)
+    assert.equal(detailRequests.length, 3)
+    assert(!errors.some((error) => /private-|password/i.test(error)), 'Private evidence reached the browser console')
+    console.log('PASS isolated Chromium renders source evidence, pins detail, supports keyboard and mobile, and withdraws the layer')
+  } finally {
+    await context.close()
+  }
+}
+
 try {
   scratch = await mkdtemp(join(tmpdir(), 'curbos-e2e-'))
   signal.throwIfAborted()
@@ -170,6 +250,8 @@ try {
   // Synthetic, background-only basemap to exercise real MapLibre without a provider.
   await writeFile(join(publicDir, 'basemap/style.json'), JSON.stringify({
     version: 8,
+    center: [0, 0],
+    zoom: 15,
     sources: {},
     layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#e4e7db' } }],
   }))
@@ -181,6 +263,7 @@ try {
     preview: { host: '127.0.0.1', port: 0, strictPort: true },
   }
   process.env.VITE_MAP_STYLE_URL = '/basemap/style.json'
+  process.env.VITE_PARKING_SCOPE = scope
   await build(config)
   signal.throwIfAborted()
   // Synthetic credentials must never escape the configuration diagnostic.
@@ -224,6 +307,8 @@ try {
   const notice = page.getByText('No verified parking data available.', { exact: true })
   const statusRegion = page.getByRole('region', { name: 'Backend status' })
   const retry = statusRegion.getByRole('button', { name: 'Check again' })
+  const evidence = page.getByRole('region', { name: 'Parking evidence' })
+  const refreshEvidence = evidence.getByRole('button', { name: 'Refresh parking evidence' })
 
   async function checkReadiness(trigger, httpStatus, heading, readiness) {
     signal.throwIfAborted()
@@ -243,6 +328,18 @@ try {
   }
 
   await checkReadiness(() => page.goto(origin), 200, 'Backend ready', 'ready')
+  await evidence.getByText('No published parking evidence for this scope.').waitFor()
+  assert.equal(await evidence.getByRole('combobox').count(), 0)
+  const spoofCurrent = (url) => url.pathname === '/v1/parking/releases/current'
+  await page.route(spoofCurrent, (route) => route.fulfill({ json: fixtureRelease() }))
+  await refreshEvidence.click()
+  await evidence.getByText('Parking evidence temporarily unavailable.').waitFor()
+  assert.equal(await evidence.getByText('Synthetic test data').count(), 0)
+  assert.equal(await evidence.getByRole('combobox').count(), 0)
+  await page.unroute(spoofCurrent)
+  await refreshEvidence.click()
+  await evidence.getByText('No published parking evidence for this scope.').waitFor()
+  console.log('PASS ordinary browser Discovery reaches Go/PostGIS through Vite and rejects synthetic responses')
   const canvas = page.locator('.map-canvas:not([inert]) canvas')
   const originalCanvas = await canvas.elementHandle()
   await page.getByRole('radio', { name: 'Going Out' }).check()
@@ -255,6 +352,8 @@ try {
   paused = true
   await checkReadiness(() => retry.click(), 503, 'Backend unavailable', 'not_ready')
   await statusRegion.getByText('The backend could not verify the database.').waitFor()
+  await refreshEvidence.click()
+  await evidence.getByText('Parking evidence temporarily unavailable.').waitFor()
   const liveness = await fetch(`${apiOrigin}/healthz`, { signal: AbortSignal.timeout(2_000) })
   assert.equal(liveness.status, 200)
   assert.deepEqual(await liveness.json(), { status: 'ok' })
@@ -262,6 +361,8 @@ try {
   paused = false
   await waitForDatabase(apiOrigin)
   await checkReadiness(() => retry.click(), 200, 'Backend ready', 'ready')
+  await refreshEvidence.click()
+  await evidence.getByText('No published parking evidence for this scope.').waitFor()
   assert(await canvas.evaluate((current, original) => current === original, originalCanvas),
     'Changing readiness recreated the MapLibre canvas')
   console.log('PASS database outage and recovery with the same browser page, Go process, and map')
@@ -274,6 +375,24 @@ try {
   await notice.waitFor()
   assert.deepEqual([...requestOrigins], [origin])
   console.log('PASS stopped API, offline browser, and redacted invalid proxy configuration')
+
+  await context.close()
+  const previewExit = await stopProcess(frontend)
+  assert(previewExit === 0 || previewExit === 143 || frontend.signalCode === 'SIGTERM', 'Ordinary preview did not stop cleanly')
+  const syntheticOut = join(scratch, 'synthetic-browser-test')
+  const entry = fileURLToPath(new URL('../src/main.tsx', import.meta.url))
+  // This separate test build is produced in scratch space. The ordinary entry,
+  // Vite config and preview output offer no URL or environment switch for injection.
+  await build({ ...config, build: { ...config.build, outDir: syntheticOut }, plugins: [{
+    name: 'curbos-isolated-discovery-test-entry', enforce: 'pre',
+    transform(code, id) {
+      if (id !== entry) return
+      assert(code.includes('<App />'), 'Could not inject the isolated synthetic client')
+      return `import { createDiscoveryClient } from './discovery/client'\n` +
+        code.replace('<App />', '<App discoveryClient={createDiscoveryClient({ allowSynthetic: true })} />')
+    },
+  }] })
+  await checkSyntheticRendering(await startPreview(syntheticOut))
 } catch (error) {
   signal.throwIfAborted()
   throw error

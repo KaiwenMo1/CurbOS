@@ -1,14 +1,28 @@
 import { useState } from 'react'
 import { BackendStatus } from './BackendStatus'
 import { MapViewport } from './MapViewport'
+import { configuredScope, createDiscoveryClient, viewportQuery, type Bounds, type DiscoveryClient, type Zone } from './discovery/client'
+import { DiscoveryPanel } from './discovery/DiscoveryPanel'
+import { useDiscovery } from './discovery/useDiscovery'
 
 const tripModes = [
   { id: 'home', label: 'Going Home', description: 'Residential, free, and overnight street parking.' },
   { id: 'out', label: 'Going Out', description: 'Metered street parking, cost, and walking distance.' },
 ] as const
 
-function App() {
+const publicClient = createDiscoveryClient()
+const noFeatures: Zone[] = []
+
+function App({ discoveryClient = publicClient }: { discoveryClient?: DiscoveryClient }) {
   const [mode, setMode] = useState<(typeof tripModes)[number]>(tripModes[0])
+  const [viewport, setViewport] = useState({ bbox: 'NO_VIEWPORT', version: 0 })
+  const scope = configuredScope(import.meta.env.VITE_PARKING_SCOPE)
+  const discovery = useDiscovery(discoveryClient, scope, viewport)
+
+  function updateBounds(bounds: Bounds | null) {
+    const bbox = viewportQuery(bounds)
+    setViewport((current) => current.bbox === bbox ? current : { bbox, version: current.version + 1 })
+  }
 
   return (
     <div className="app-shell">
@@ -30,7 +44,9 @@ function App() {
         <div className="workspace-intro">
           <h1>Parking <span>map</span></h1>
         </div>
-        <MapViewport styleURL={import.meta.env.VITE_MAP_STYLE_URL} />
+        <MapViewport styleURL={import.meta.env.VITE_MAP_STYLE_URL} evidence={scope ? {
+          features: discovery.ready?.features ?? noFeatures, onBounds: updateBounds, onSelect: discovery.select,
+        } : undefined} />
 
         <section
           className="control-panel"
@@ -60,6 +76,7 @@ function App() {
             </div>
             <p id="mode-description" aria-live="polite">{mode.description}</p>
           </fieldset>
+          <DiscoveryPanel discovery={discovery} />
           <BackendStatus />
         </section>
       </main>
