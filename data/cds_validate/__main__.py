@@ -141,11 +141,26 @@ def _complete_package(output, lineage, candidate_id, records, candidate, summary
             files.remove_stage_temporary(output, temporary)
 
 
-def run(batch_id, scope_key, stage_dir, output_root, *, db_socket_dir=None):
+def prepare(connection, batch_id, scope_key, staged):
     if not isinstance(batch_id, UUID):
         raise CaptureError("INVALID_BATCH_ID")
     if not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", scope_key):
         raise CaptureError("INVALID_SCOPE_KEY")
+    lineage = registered_lineage(connection, batch_id, scope_key)
+    stage_report, rows = load_stage(staged, lineage)
+    for role, artifact in lineage["artifacts"].items():
+        artifact["declared_source_crs"] = stage_report["components"][role]["source_crs"]
+    postgis, geos = connection.execute(
+        "SELECT public.postgis_lib_version(), public.postgis_geos_version()"
+    ).fetchone()
+    lineage["geometry_engine"] = {"postgis": postgis, "geos": geos}
+    records, candidate, summary = assess(connection, stage_report, rows)
+    key = digest(canonical(lineage))
+    candidate_id = str(uuid5(NAMESPACE_URL, f"curbos:cds-validation:v{_VERSION}:{key}"))
+    return lineage, candidate_id, records, candidate, summary
+
+
+def run(batch_id, scope_key, stage_dir, output_root, *, db_socket_dir=None):
     stage_dir, output_root = _path_pair(stage_dir, output_root)
     with (
         files.root(stage_dir, private=True) as staged,
@@ -157,21 +172,9 @@ def run(batch_id, scope_key, stage_dir, output_root, *, db_socket_dir=None):
             connection.execute(
                 "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
             )
-            lineage = registered_lineage(connection, batch_id, scope_key)
-            stage_report, rows = load_stage(staged, lineage)
-            for role, artifact in lineage["artifacts"].items():
-                artifact["declared_source_crs"] = stage_report["components"][role][
-                    "source_crs"
-                ]
-            postgis, geos = connection.execute(
-                "SELECT public.postgis_lib_version(), public.postgis_geos_version()"
-            ).fetchone()
-            lineage["geometry_engine"] = {"postgis": postgis, "geos": geos}
-            records, candidate, summary = assess(connection, stage_report, rows)
-        key = digest(canonical(lineage))
-        candidate_id = str(
-            uuid5(NAMESPACE_URL, f"curbos:cds-validation:v{_VERSION}:{key}")
-        )
+            lineage, candidate_id, records, candidate, summary = prepare(
+                connection, batch_id, scope_key, staged
+            )
         report_sha = _complete_package(
             output, lineage, candidate_id, records, candidate, summary
         )

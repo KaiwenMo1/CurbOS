@@ -143,9 +143,16 @@ class ValidateStage(unittest.TestCase):
             ),
         )
         with database.transaction() as connection:
+            # Deliberate registry corruption for the validator test only.
+            connection.execute(
+                "ALTER TABLE sources.import_batch DISABLE TRIGGER protect_batch"
+            )
             connection.execute(
                 "UPDATE sources.import_batch SET validation_report_sha256 = %s WHERE batch_id = %s",
                 (report_sha, batch_id),
+            )
+            connection.execute(
+                "ALTER TABLE sources.import_batch ENABLE TRIGGER protect_batch"
             )
 
     def failure(self, batch_id, directory, code, *, scope=_SCOPE):
@@ -536,6 +543,9 @@ class ValidateStage(unittest.TestCase):
 
         with database.transaction() as connection:
             connection.execute(
+                "ALTER TABLE sources.import_artifact DISABLE TRIGGER protect_batch_artifacts"
+            )
+            connection.execute(
                 """
                 UPDATE sources.import_artifact AS j
                 SET artifact_id = other.artifact_id
@@ -544,6 +554,9 @@ class ValidateStage(unittest.TestCase):
                   AND j.component_role = 'zones' AND other.component_role = 'zones'
                 """,
                 (first, second),
+            )
+            connection.execute(
+                "ALTER TABLE sources.import_artifact ENABLE TRIGGER protect_batch_artifacts"
             )
         self.failure(first, directory, "ARTIFACT_LINEAGE_MISMATCH")
 

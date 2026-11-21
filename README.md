@@ -164,13 +164,15 @@ Run `make api-test` to include the real HTTP lifecycle test in that same disposa
 
 `make db-migrate` applies migration `00002` after PostGIS. It creates empty `sources`, `geo`, and `rules` schemas for source provenance, QA, and release-scoped Zones, Policies, and Areas. Composite foreign keys keep their relationships within one release and restrict the nullable active pointer to its own scope. An imported source identifier can be recorded independently of physical resource identity. A valid WGS84 LineString alone gives no evidence of curb placement, side, or parking legality.
 
-`make db-test` checks the empty schema, inserts explicitly synthetic rows in a rolled-back transaction, and tests rejection of invalid relationships, digests, metadata, and geometry. It then rolls back migration `00002` and reapplies it in the disposable project, preserving migration `00001` and PostGIS. The Down migration deletes M2 tables and evidence and is for disposable tests only. Release rollback will use the active pointer workflow when implemented.
-
-The pointer and audit tables define storage for a future publication workflow. Public eligibility, source bundle validation, frozen-data and audit immutability, operator authorization, and compare-and-swap activation are later gates.
+`make db-test` checks the empty schema, inserts explicitly synthetic rows in a rolled-back transaction, and tests rejection of invalid relationships, digests, metadata, and geometry. It exercises migration rollback and reapplication in a disposable project while preserving migration `00001` and PostGIS. Migration `00002` Down deletes the M2 tables and is intended for disposable tests.
 
 ### Offline CDS capture
 
 M2 PR-02 verifies a local manifest and captures DS13 Zones and DS11 Policies, with DS12 Areas optional. It records provenance in PostgreSQL and writes deterministic private staging and QA files. The test gate uses synthetic fixtures in a disposable database. [Setup, usage and recovery](data/cds_capture/README.md)
+
+### Private release preparation
+
+The offline validator prepares private candidate packages. Apply through migration `00004` for private registration, independent candidate verification and approval, frozen projections, and an audited pointer workflow gated to administrator-enrolled synthetic fixtures. Real releases remain private. The local `curbos` database owner is for administration. Use a separate least-privileged login for the API. [Validation runbook](data/cds_validate/README.md) [Publication runbook](data/cds_publish/README.md)
 
 ### Browser-to-database quality gate
 

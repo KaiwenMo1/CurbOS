@@ -54,8 +54,8 @@ cds-unit:
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest discover -s tests/cds -p test_unit.py -v
 
 cds-lint:
-	$(RUFF) check data/cds_capture data/cds_validate tests/cds
-	$(RUFF) format --check data/cds_capture data/cds_validate tests/cds
+	$(RUFF) check data/cds_capture data/cds_validate data/cds_publish tests/cds
+	$(RUFF) format --check data/cds_capture data/cds_validate data/cds_publish tests/cds
 
 cds-test:
 	CURBOS_TEST_PYTHON="$(PYTHON)" bash tests/db/smoke.sh cds
