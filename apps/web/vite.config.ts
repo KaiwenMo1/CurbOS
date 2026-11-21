@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
-function readinessProxy(mode: string) {
+function localApiProxy(mode: string) {
   const directory = fileURLToPath(new URL('.', import.meta.url))
   const { CURBOS_DEV_API_ORIGIN: origin = 'http://127.0.0.1:8080' } =
     loadEnv(mode, directory, 'CURBOS_DEV_API_ORIGIN')
@@ -12,14 +12,15 @@ function readinessProxy(mode: string) {
     throw new Error('CURBOS_DEV_API_ORIGIN must be http://127.0.0.1:<port> with a port from 1 to 65535.')
   }
 
-  return { '^/readyz$': `http://127.0.0.1:${Number(port)}` }
+  const target = `http://127.0.0.1:${Number(port)}`
+  return { '^/readyz$': target, '^/v1/parking/': target }
 }
 
 export default defineConfig(({ command, mode }) => ({
   plugins: [react()],
   server: {
     cors: false,
-    proxy: command === 'serve' && !process.env.VITEST ? readinessProxy(mode) : undefined,
+    proxy: command === 'serve' && !process.env.VITEST ? localApiProxy(mode) : undefined,
   },
   test: {
     environment: 'jsdom',

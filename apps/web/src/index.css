@@ -191,6 +191,8 @@ body {
   display: grid;
   grid-area: map;
   place-items: center;
+  align-self: start;
+  block-size: max(36rem, calc(100svh - 4.25rem - var(--gutter) - var(--gutter) - 1px));
   min-height: 36rem;
   overflow: hidden;
   border: 1px solid #2c493c;
@@ -543,6 +545,111 @@ body {
   line-height: 1;
 }
 
+.discovery-panel {
+  display: grid;
+  gap: 0.625rem;
+  padding-block-start: 1rem;
+  border-block-start: 1px solid var(--line);
+  min-width: 0;
+}
+
+.discovery-panel :is(h2, h3, h4, p, dl, ul) {
+  margin: 0;
+}
+
+.discovery-panel h2 {
+  font-size: 1rem;
+}
+
+.discovery-panel :is(h3, h4, label) {
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.discovery-status strong {
+  color: var(--notice-ink);
+  font-size: 0.875rem;
+}
+
+.discovery-panel :is(button, select) {
+  min-height: 2.75rem;
+  max-width: 100%;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  color: var(--ink);
+  background: var(--paper);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.discovery-panel button {
+  justify-self: start;
+  cursor: pointer;
+}
+
+.discovery-panel :is(button, select):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.evidence-legend {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.evidence-legend span {
+  flex: 0 0 1.25rem;
+  border-top: 0.2rem solid #64728c;
+  border-radius: 0.25rem;
+}
+
+.evidence-selector,
+.evidence-detail {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.evidence-selector select {
+  width: 100%;
+  min-width: 0;
+}
+
+.evidence-detail {
+  padding-block-start: 0.75rem;
+  border-block-start: 1px solid var(--line);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.evidence-detail-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem;
+}
+
+.evidence-detail dl {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 0.375rem 0.625rem;
+}
+
+.evidence-detail dt {
+  color: var(--muted);
+}
+
+.evidence-detail dd {
+  margin: 0;
+}
+
+.evidence-detail ul {
+  padding-inline-start: 1rem;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .workspace-intro h1,
   .map-message:not(:empty) {
@@ -587,6 +694,7 @@ body {
   }
 
   .map-viewport {
+    block-size: auto;
     min-height: clamp(17rem, 51svh, 32rem);
   }
 

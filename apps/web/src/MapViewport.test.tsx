@@ -37,6 +37,7 @@ function mapEvent(name: string, error = new Error('Basemap request failed')) {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  vi.stubEnv('VITE_PARKING_SCOPE', undefined)
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
 })
 
