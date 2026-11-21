@@ -1,17 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "CurbOS private CDS readiness report v1",
+  "title": "CurbOS private CDS readiness report v2",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "assessment_schema_version", "readiness_policy_version", "state", "recommendation",
     "public_eligible", "subject", "lineage", "source", "registration", "qa", "coverage",
-    "checklist", "documented_withholdings", "placement", "parking_evidence",
+    "checklist", "withholding_assertions", "independent_approval_verification", "placement", "parking_evidence",
     "publication_controls", "reproducibility", "historical_comparison", "outcomes"
   ],
   "properties": {
-    "assessment_schema_version": {"const": 1},
-    "readiness_policy_version": {"const": 1},
+    "assessment_schema_version": {"const": 2},
+    "readiness_policy_version": {"const": 2},
     "state": {"const": "ASSESSMENT_COMPLETE"},
     "recommendation": {"const": "NO_GO"},
     "public_eligible": {"const": false},
@@ -149,16 +149,38 @@
       "maxProperties": 14,
       "additionalProperties": {
         "type": "object",
-        "required": ["state", "evidence_ref"],
+        "required": ["declared_state", "evidence_ref", "verification_status"],
         "additionalProperties": false,
-        "properties": {"state": {"enum": ["APPROVED", "BLOCKED", "UNKNOWN"]},
-          "evidence_ref": {"anyOf": [{"$ref": "#/$defs/reviewReference"}, {"type": "null"}]}}
+        "properties": {
+          "declared_state": {"enum": ["APPROVED", "BLOCKED", "UNKNOWN", null]},
+          "evidence_ref": {"anyOf": [{"$ref": "#/$defs/reviewReference"}, {"type": "null"}]},
+          "verification_status": {"enum": ["UNVERIFIED", "NOT_ASSESSED"]}
+        },
+        "oneOf": [
+          {"properties": {"declared_state": {"const": null}, "evidence_ref": {"const": null},
+            "verification_status": {"const": "NOT_ASSESSED"}}},
+          {"properties": {"declared_state": {"const": "UNKNOWN"}, "evidence_ref": {"const": null},
+            "verification_status": {"const": "UNVERIFIED"}}},
+          {"properties": {"declared_state": {"enum": ["APPROVED", "BLOCKED"]},
+            "evidence_ref": {"$ref": "#/$defs/reviewReference"}, "verification_status": {"const": "UNVERIFIED"}}}
+        ]
       }
     },
-    "documented_withholdings": {
+    "withholding_assertions": {
       "type": "object",
       "propertyNames": {"pattern": "^(zones|policies|areas):[0-9]+$"},
-      "additionalProperties": {"$ref": "#/$defs/reviewReference"}
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["evidence_ref", "verification_status"],
+        "properties": {
+          "evidence_ref": {"$ref": "#/$defs/reviewReference"},
+          "verification_status": {"const": "UNVERIFIED"}
+        }
+      }
+    },
+    "independent_approval_verification": {
+      "const": {"status": "NOT_ASSESSED", "reason": "AUTHORITATIVE_ATTESTATION_VERIFICATION_DEFERRED"}
     },
     "placement": {
       "type": "object",
@@ -172,7 +194,7 @@
         "independent_placement_requirement": {
           "type": "object",
           "required": ["state", "reason"],
-          "properties": {"state": {"enum": ["APPROVED", "BLOCKED", "UNKNOWN", "NOT_APPLICABLE"]},
+          "properties": {"state": {"enum": ["UNVERIFIED", "NOT_ASSESSED", "NOT_APPLICABLE"]},
             "reason": {"type": "string"}}
         }
       }
@@ -191,7 +213,7 @@
     "reproducibility": {
       "type": "object",
       "required": ["tool_version", "comparison_basis", "evidence_sha256", "baseline_sha256", "database_snapshot"],
-      "properties": {"tool_version": {"const": 1}, "database_snapshot": {"const": "REPEATABLE_READ_READ_ONLY"}}
+      "properties": {"tool_version": {"const": 2}, "database_snapshot": {"const": "REPEATABLE_READ_READ_ONLY"}}
     },
     "historical_comparison": {
       "type": "object",
@@ -204,13 +226,8 @@
       "required": ["TECHNICAL_READINESS", "EVIDENCE_READINESS", "PUBLICATION_READINESS"],
       "properties": {
         "TECHNICAL_READINESS": {"$ref": "#/$defs/outcome"},
-        "EVIDENCE_READINESS": {"$ref": "#/$defs/outcome"},
-        "PUBLICATION_READINESS": {
-          "allOf": [
-            {"$ref": "#/$defs/outcome"},
-            {"properties": {"status": {"const": "BLOCKED"}}}
-          ]
-        }
+        "EVIDENCE_READINESS": {"$ref": "#/$defs/blockedOutcome"},
+        "PUBLICATION_READINESS": {"$ref": "#/$defs/blockedOutcome"}
       }
     }
   },
@@ -218,6 +235,12 @@
     "uuid": {"type": "string", "format": "uuid"},
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "reviewReference": {"type": "string", "pattern": "^evidence:[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$"},
+    "blockedOutcome": {
+      "allOf": [
+        {"$ref": "#/$defs/outcome"},
+        {"properties": {"status": {"const": "BLOCKED"}}}
+      ]
+    },
     "outcome": {
       "type": "object",
       "additionalProperties": false,

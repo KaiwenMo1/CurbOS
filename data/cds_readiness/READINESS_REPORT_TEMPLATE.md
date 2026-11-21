@@ -20,7 +20,7 @@ Record source-row denominators for Zones, Policies, and Areas. Separate accepted
 
 ## 5. Rights and redistribution
 
-Record an independent decision for each checklist item. Cite the exact component, applicable terms and version, reviewed use, attribution, restrictions, and revocation requirements.
+Record each supplied claim and its exact reference separately from the verification result. The assessor marks supplied claims unverified. Cite the exact component, applicable terms and version, reviewed use, attribution, restrictions, and revocation requirements in the private record.
 
 ## 6. Geographic coverage
 
@@ -36,7 +36,7 @@ Record unresolved legal backing, signs, restrictions, permits, and full-stay app
 
 ## 9. Publication security and withdrawal
 
-Cite the relevant engineering controls and a separately reviewed operator and withdrawal plan. Distinguish disposable test results from real-data operating evidence.
+Cite technical integrity checks and any separately verified approval evidence. Record attestation verification as unassessed when authority, independence or the underlying record cannot be established. Record the missing publication authorization and any separately reviewed operator and withdrawal plan.
 
 ## 10. Unresolved blockers
 

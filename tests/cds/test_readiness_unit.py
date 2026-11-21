@@ -10,7 +10,14 @@ class ReadinessPolicy(unittest.TestCase):
     def test_absent_review_stays_unknown_and_cannot_authorize(self):
         items, claim, withheld = checklist(None, {}, None, ["zones:2"])
         for item in items.values():
-            self.assertEqual(item, {"state": "UNKNOWN", "evidence_ref": None})
+            self.assertEqual(
+                item,
+                {
+                    "declared_state": None,
+                    "evidence_ref": None,
+                    "verification_status": "NOT_ASSESSED",
+                },
+            )
         self.assertEqual(claim, "SOURCE_REPORTED_ONLY")
         result = outcomes(
             items,

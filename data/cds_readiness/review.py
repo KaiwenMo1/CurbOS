@@ -6,7 +6,9 @@ from collections import Counter
 from data.cds_capture.manifest import CaptureError
 from data.cds_capture.stage import _uuid
 
-VERSION = 1
+INPUT_SCHEMA_VERSION = 1
+METRIC_SCHEMA_VERSION = 1
+POLICY_VERSION = 2
 SHA256 = re.compile(r"[0-9a-f]{64}")
 REVIEW_REFERENCE = re.compile(r"evidence:[A-Za-z0-9][A-Za-z0-9_.-]{0,119}")
 RIGHTS = (
@@ -47,7 +49,11 @@ GEOMETRY_TYPES = {
     "MultiPolygon",
     "GeometryCollection",
 }
-UNKNOWN = {"state": "UNKNOWN", "evidence_ref": None}
+OMITTED = {
+    "declared_state": None,
+    "evidence_ref": None,
+    "verification_status": "NOT_ASSESSED",
+}
 
 
 def _item(value):
@@ -63,11 +69,15 @@ def _item(value):
             raise CaptureError("INVALID_EVIDENCE_REFERENCE")
     elif ref is not None:
         raise CaptureError("INVALID_EVIDENCE_REFERENCE")
-    return value
+    return {
+        "declared_state": value["state"],
+        "evidence_ref": ref,
+        "verification_status": "UNVERIFIED",
+    }
 
 
 def checklist(review, binding, boundary_sha, locators):
-    items = {name: UNKNOWN.copy() for name in (*RIGHTS, *EVIDENCE)}
+    items = {name: OMITTED.copy() for name in (*RIGHTS, *EVIDENCE)}
     if review is None:
         return items, "SOURCE_REPORTED_ONLY", {}
     allowed = {
@@ -82,7 +92,7 @@ def checklist(review, binding, boundary_sha, locators):
         not isinstance(review, dict)
         or set(review) - allowed
         or type(review.get("schema_version")) is not int
-        or review["schema_version"] != VERSION
+        or review["schema_version"] != INPUT_SCHEMA_VERSION
         or not isinstance(review.get("items"), dict)
         or set(review["items"]) - items.keys()
     ):
@@ -100,7 +110,8 @@ def checklist(review, binding, boundary_sha, locators):
     ):
         raise CaptureError("INVALID_EVIDENCE_BOUNDARY_DIGEST")
     if (
-        reviewed is not None or items["independent_coverage"]["state"] == "APPROVED"
+        reviewed is not None
+        or items["independent_coverage"]["declared_state"] == "APPROVED"
     ) and (reviewed is None or reviewed != boundary_sha):
         raise CaptureError("EVIDENCE_BOUNDARY_MISMATCH")
 
@@ -317,7 +328,7 @@ def compare_history(baseline, basis, qa):
         or set(baseline)
         != {"schema_version", "basis", "evidence_ref", "metrics", "areas"}
         or type(baseline["schema_version"]) is not int
-        or baseline["schema_version"] != VERSION
+        or baseline["schema_version"] != INPUT_SCHEMA_VERSION
         or not isinstance(baseline["basis"], dict)
         or not isinstance(baseline["metrics"], dict)
         or not isinstance(baseline["areas"], dict)
@@ -387,19 +398,27 @@ def _block(code, evidence_ref):
 
 
 def outcomes(items, source, coverage, claim, plan, withheld):
-    evidence = []
+    evidence = [
+        _block(
+            "INDEPENDENT_APPROVALS_NOT_VERIFIED", "independent_approval_verification"
+        )
+    ]
     required = {
-        "source_qa_decisions": "SOURCE_QA_DECISIONS_MISSING_OR_BLOCKED",
-        "independent_coverage": "INDEPENDENT_COVERAGE_REVIEW_MISSING_OR_BLOCKED",
+        "source_qa_decisions": "SOURCE_QA_DECISIONS",
+        "independent_coverage": "INDEPENDENT_COVERAGE_REVIEW",
     }
     if claim == "INDEPENDENTLY_VERIFIED":
-        required["independent_placement"] = (
-            "INDEPENDENT_PLACEMENT_REVIEW_MISSING_OR_BLOCKED"
-        )
-    for key, code in required.items():
+        required["independent_placement"] = "INDEPENDENT_PLACEMENT_REVIEW"
+    for key, prefix in required.items():
         item = items[key]
-        if item["state"] != "APPROVED":
-            evidence.append(_block(code, item["evidence_ref"] or f"checklist:{key}"))
+        suffix = (
+            "UNVERIFIED"
+            if item["declared_state"] == "APPROVED"
+            else "MISSING_OR_BLOCKED"
+        )
+        evidence.append(
+            _block(f"{prefix}_{suffix}", item["evidence_ref"] or f"checklist:{key}")
+        )
     if (
         coverage["scope_review_status"] != "APPROVED"
         or not coverage["review_recorded"]
@@ -421,6 +440,10 @@ def outcomes(items, source, coverage, claim, plan, withheld):
                 "REVIEW_REQUIRED_RECORDS_LACK_DOCUMENTED_DISPOSITION",
                 "qa:projection.review_required_locators",
             )
+        )
+    if withheld:
+        evidence.append(
+            _block("REVIEW_DISPOSITIONS_UNVERIFIED", "withholding_assertions")
         )
     if not plan["zones"]:
         evidence.append(
@@ -447,13 +470,14 @@ def outcomes(items, source, coverage, claim, plan, withheld):
         )
     for name in RIGHTS:
         item = items[name]
-        if item["state"] != "APPROVED":
-            rights.append(
-                _block(
-                    f"RIGHTS_{name.upper()}_{item['state']}",
-                    item["evidence_ref"] or f"checklist:{name}",
-                )
+        declared = item["declared_state"]
+        status = "UNVERIFIED" if declared == "APPROVED" else declared or "UNKNOWN"
+        rights.append(
+            _block(
+                f"RIGHTS_{name.upper()}_{status}",
+                item["evidence_ref"] or f"checklist:{name}",
             )
+        )
 
     publication = (
         evidence
@@ -486,7 +510,7 @@ def outcomes(items, source, coverage, claim, plan, withheld):
             ],
         },
         "EVIDENCE_READINESS": {
-            "status": "BLOCKED" if evidence else "PASS",
+            "status": "BLOCKED",
             "reasons": evidence,
             "evidence_refs": [
                 "qa:affected_records",

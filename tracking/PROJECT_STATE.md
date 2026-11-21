@@ -15,7 +15,8 @@ Updated 2026-11-21.
 - **M2 PR-05** Merged in [PR #11](https://github.com/KaiwenMo1/CurbOS/pull/11) as `b54c54e`. The pinned Discovery API closes historical pins and cursors on scope withdrawal. [Discovery API contract](../contracts/openapi/DISCOVERY.md)
 - **M2 PR-06** Merged in [PR #12](https://github.com/KaiwenMo1/CurbOS/pull/12) as `52e80ea`. The browser uses the pinned Discovery API and shows no verified parking data in ordinary mode. [Frontend runbook](../apps/web/DISCOVERY.md)
 - **M2 PR-07** The offline assessor verifies private artifacts, stage, candidate, and projection in a read-only transaction. The synthetic CDS suite passed 72 tests, including no database changes after successful or failed assessments. Real-source evidence remains `NOT_ASSESSED` and the publication decision remains `NO_GO`. [Readiness runbook](../data/cds_readiness/README.md)
-- **Next review gate** Independent ChatGPT and human review of the M2 PR-07 draft. Real-archive assessment, independent rights and field review, and production publication authorization require separate decisions.
+- **M2 PR-07 review fix** [Draft PR #13](https://github.com/KaiwenMo1/CurbOS/pull/13) now reports supplied approval states and references as unverified assertions in schema v2. The 74-test synthetic suite passed. Technical integrity remains independently checked, and evidence and publication readiness remain blocked. [Readiness runbook](../data/cds_readiness/README.md)
+- **Next review gate** Independent Review Round 2 on Draft PR #13. Authoritative attestation verification, real-archive assessment, independent rights and field review, and production publication authorization require separate decisions.
 
 ## M1 acceptance evidence
 

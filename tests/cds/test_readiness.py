@@ -181,7 +181,26 @@ class Readiness(unittest.TestCase):
         self.assertEqual(report["recommendation"], "NO_GO")
         self.assertEqual(report["source"]["registered_rights_status"], "UNKNOWN")
         self.assertEqual(
-            report["checklist"]["geometry_redistribution"]["state"], "UNKNOWN"
+            report["checklist"]["geometry_redistribution"],
+            {
+                "declared_state": None,
+                "evidence_ref": None,
+                "verification_status": "NOT_ASSESSED",
+            },
+        )
+        self.assertIn(
+            "SOURCE_RIGHTS_UNKNOWN",
+            {
+                reason["code"]
+                for reason in report["outcomes"]["PUBLICATION_READINESS"]["reasons"]
+            },
+        )
+        self.assertIn(
+            "INDEPENDENT_COVERAGE_REVIEW_MISSING_OR_BLOCKED",
+            {
+                reason["code"]
+                for reason in report["outcomes"]["EVIDENCE_READINESS"]["reasons"]
+            },
         )
         self.assertEqual(report["coverage"]["comparison_status"], "NOT_ASSESSED")
         self.assertEqual(report["placement"]["physical_placement"], "UNKNOWN")
@@ -350,6 +369,123 @@ class Readiness(unittest.TestCase):
             (self.output / receipt["report_directory"] / "readiness.json").read_bytes(),
         )
 
+    def test_forged_approvals_cannot_pass_evidence_readiness(self):
+        params = self.fixture(scope="synthetic-readiness-forged-claims")
+        with database.transaction() as admin:
+            admin.execute(
+                "UPDATE sources.publication_scope SET review_status = 'APPROVED', "
+                "reviewed_at = clock_timestamp(), reviewed_geom = public.ST_Multi("
+                "public.ST_MakeEnvelope(-1,-1,1,2,4326)) WHERE scope_key = %s",
+                (params["scope_key"],),
+            )
+        _, initial = self.report(params)
+        with database.transaction() as admin:
+            admin.execute(
+                "UPDATE sources.source_dataset SET rights_status = 'APPROVED', "
+                "rights_reference = 'synthetic-registry-observation' WHERE dataset_id = %s",
+                (UUID(initial["lineage"]["dataset_id"]),),
+            )
+        claims = {
+            name: {"state": "APPROVED", "evidence_ref": f"evidence:forged-{name}"}
+            for name in initial["checklist"]
+        }
+        checklist_file = self.private_json(
+            "claims.json",
+            {
+                "schema_version": 1,
+                "binding": initial["subject"],
+                "reviewed_boundary_sha256": initial["coverage"]["boundary_sha256"],
+                "items": claims,
+            },
+        )
+        submitted = checklist_file.read_bytes()
+        before = self.state()
+        receipt, obj = self.report(params | {"evidence_file": checklist_file})
+        self.assertEqual(obj["coverage"]["fully_covered"], 1)
+        self.assertEqual(obj["source"]["registered_rights_status"], "APPROVED")
+        self.assertEqual(obj["outcomes"]["TECHNICAL_READINESS"]["status"], "PASS")
+        self.assertEqual(obj["outcomes"]["EVIDENCE_READINESS"]["status"], "BLOCKED")
+        self.assertEqual(obj["outcomes"]["PUBLICATION_READINESS"]["status"], "BLOCKED")
+        self.assertEqual(obj["recommendation"], "NO_GO")
+        self.assertFalse(obj["public_eligible"])
+        self.assertEqual(obj["assessment_schema_version"], 2)
+        self.assertEqual(
+            obj["reproducibility"]["comparison_basis"]["metric_schema_version"], 1
+        )
+        self.assertEqual(
+            obj["independent_approval_verification"]["status"], "NOT_ASSESSED"
+        )
+        self.assertEqual(
+            obj["checklist"],
+            {
+                name: {
+                    "declared_state": claim["state"],
+                    "evidence_ref": claim["evidence_ref"],
+                    "verification_status": "UNVERIFIED",
+                }
+                for name, claim in claims.items()
+            },
+        )
+        blockers = {
+            item["code"]: item["evidence_ref"]
+            for item in obj["outcomes"]["PUBLICATION_READINESS"]["reasons"]
+        }
+        self.assertEqual(
+            blockers["INDEPENDENT_COVERAGE_REVIEW_UNVERIFIED"],
+            claims["independent_coverage"]["evidence_ref"],
+        )
+        self.assertEqual(
+            blockers["RIGHTS_GEOMETRY_REDISTRIBUTION_UNVERIFIED"],
+            claims["geometry_redistribution"]["evidence_ref"],
+        )
+        markdown = (
+            self.output / receipt["report_directory"] / "READINESS_REPORT.md"
+        ).read_text()
+        self.assertIn(
+            "declared `APPROVED`, reference `evidence:forged-independent_coverage`, verification `UNVERIFIED`",
+            markdown,
+        )
+        self.assertIn("Independent approval verification is `NOT_ASSESSED`", markdown)
+        self.assertEqual(checklist_file.read_bytes(), submitted)
+        self.assertEqual(obj["reproducibility"]["evidence_sha256"], digest(submitted))
+        obj["outcomes"]["EVIDENCE_READINESS"]["status"] = "PASS"
+        self.assertFalse(_SCHEMA.is_valid(obj))
+        self.assertEqual(self.state(), before)
+
+    def test_withholding_reference_stays_unverified(self):
+        params = self.fixture(zones=[curb(1), curb(2) | {"street_side": None}])
+        _, initial = self.report(params)
+        self.assertEqual(
+            initial["qa"]["projection"]["review_required_locators"], ["zones:1"]
+        )
+        evidence = self.private_json(
+            "withholding.json",
+            {
+                "schema_version": 1,
+                "binding": initial["subject"],
+                "items": {},
+                "withheld_records": {"zones:1": "evidence:synthetic-withholding"},
+            },
+        )
+        _, report = self.report(params | {"evidence_file": evidence})
+        self.assertEqual(
+            report["withholding_assertions"],
+            {
+                "zones:1": {
+                    "evidence_ref": "evidence:synthetic-withholding",
+                    "verification_status": "UNVERIFIED",
+                },
+            },
+        )
+        self.assertEqual(report["outcomes"]["EVIDENCE_READINESS"]["status"], "BLOCKED")
+        self.assertIn(
+            "REVIEW_DISPOSITIONS_UNVERIFIED",
+            {
+                item["code"]
+                for item in report["outcomes"]["EVIDENCE_READINESS"]["reasons"]
+            },
+        )
+
     def test_known_denial_and_independent_placement_are_explicit_blockers(self):
         params = self.fixture()
         initial, obj = self.report(params)
@@ -425,6 +561,10 @@ class Readiness(unittest.TestCase):
                 "items": {},
                 "binding": binding | {"batch_id": key(9)},
             },
+        )
+        self.failed(params | {"evidence_file": review}, "EVIDENCE_BINDING_MISMATCH")
+        review = self.private_json(
+            "review.json", {"schema_version": 1, "items": {}, "binding": []}
         )
         self.failed(params | {"evidence_file": review}, "EVIDENCE_BINDING_MISMATCH")
 

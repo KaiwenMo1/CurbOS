@@ -1,6 +1,6 @@
 # Private CDS real-source readiness
 
-PR-07 produces a private go/no-go assessment for one exact batch and scope. The approved Master Pack lists independent legal and rights review, field placement samples, reviewed coverage, and human approval as the real-publication gate. This implementation covers assessment and verification of that gate. The current authorization does not commission those reviews, permit a real-archive run, or enable serving. The report's real-publication recommendation is always `NO_GO`.
+PR-07 produces a private go/no-go assessment for one exact batch and scope. The approved Master Pack requires independent legal and rights review, field placement samples, reviewed coverage, and human approval for real publication. The tool verifies technical integrity and records submitted assertions for later review. The current authorization covers synthetic assessments. The report's real-publication recommendation is always `NO_GO`.
 
 ## Run on separately authorized private evidence
 
@@ -28,25 +28,25 @@ The command uses the existing loopback PostgreSQL connection settings and also a
 
 ## Evidence checklist
 
-An omitted checklist leaves the required items `UNKNOWN`. Provide an optional private `--evidence-file` only after human review. It must be a JSON object owned by the assessor with no group or world access. Put it in a private directory outside the four stores and outside Git.
+An omitted checklist leaves the required items unknown. Supply an optional `--evidence-file` to retain a reviewer's claims alongside the technical evidence. It must be a JSON object owned by the assessor with no group or world access. Put it in a private directory outside the four stores and outside Git.
 
 | Field | What the reviewer supplies |
 |---|---|
 | `schema_version` | Integer `1`. |
 | `binding` | The exact `subject` from an initial successful assessment. It binds batch, scope, stage digest, candidate ID, and candidate report digest. |
-| `items` | A map from checklist key to an object with `state` and `evidence_ref`. Use `UNKNOWN` with a null reference or an independently recorded `APPROVED` or `BLOCKED` item with an opaque `evidence:<id>` reference. |
-| `reviewed_boundary_sha256` | Required for an approved `independent_coverage` item. It must match the exact stored reviewed geometry digest. |
+| `items` | A map from checklist key to an object with `state` and `evidence_ref`. Use `UNKNOWN` with a null reference, or submit an `APPROVED` or `BLOCKED` assertion with an opaque `evidence:<id>` reference. |
+| `reviewed_boundary_sha256` | Required when declaring `independent_coverage` to be `APPROVED`. It must match the exact stored geometry digest. The match binds the assertion to the boundary bytes. |
 | `placement_claim` | Optional. Defaults to `SOURCE_REPORTED_ONLY`. The `INDEPENDENTLY_VERIFIED` claim requires independent review and stays blocked for this projection, which is source-reported. |
-| `withheld_records` | Optional mapping from an exact review-required locator such as `zones:<index>` to the human decision reference. The only disposition recorded by this field is withholding. |
+| `withheld_records` | Optional mapping from an exact review-required locator such as `zones:<index>` to the supplied withholding reference. The tool keeps it as an unverified assertion. |
 
 Rights keys are `publisher_identity`, `distribution_origin`, `acquisition_date`, `published_terms`, `private_storage`, `transformation`, `geometry_redistribution`, `attribution`, `commercial_and_public_use_restrictions`, `downstream_map_display`, and `revocation_and_updates`. Review each exact component through its private provenance reference and verify that the rights decision covers the proposed use. Catalog and distribution URIs appear as hashes in the report. Component acquisition times are registry facts and do not establish rights. Keep terms, license versions, signed decisions, and any required attribution text in the private review record.
 
-Other keys are `source_qa_decisions`, `independent_coverage`, and `independent_placement`. An `evidence:<id>` reference records a supplied human decision. The tool checks binding and syntax. The independent human reviewer establishes the authority and content of the underlying record. The placement checklist reports `NOT_APPLICABLE` as a requirement for a source-reported-only claim while physical placement itself remains `UNKNOWN`. Review actual street sides and distinguish centerline, curb-face, and other representations before making a placement claim.
+Other keys are `source_qa_decisions`, `independent_coverage`, and `independent_placement`. The report retains each supplied state as `declared_state` and preserves its exact `evidence_ref`. A supplied item has `verification_status=UNVERIFIED`. An omitted item has a null declaration and `verification_status=NOT_ASSESSED`. The checker validates subject binding and reference syntax. Independent verification of record existence, identity, authority, and separation of duties requires a separately approved attestation design. The report records that verification as `NOT_ASSESSED`. Database rights and scope review fields are reported as registry observations. The placement requirement is `NOT_APPLICABLE` for a source-reported-only claim while physical placement remains `UNKNOWN`.
 
 ## Read the outcomes and denominators
 
 - **Technical readiness** passes after replaying the authenticated private batch, stage, candidate, and projection. Integrity failures return a nonzero exit with a reason code and leave no final report. A completed assessment may legitimately contain exclusions or an empty projection.
-- **Evidence readiness** evaluates the stated Discovery claim. It requires independent source QA and boundary evidence, dispositions for all review-required rows, at least one representable Zone, and containment of projected lines in the reviewed scope. Intersection is a geometric measurement. Approval and field confidence require independent evidence. The tool uses no numerical threshold for public approval.
+- **Evidence readiness** remains `BLOCKED` because independent approvals cannot be verified in this slice. The report identifies additional gaps for source QA, boundary and field review, dispositions, representability, and geometric containment. An `APPROVED` assertion with a matching digest and reference leaves that item unverified.
 - **Publication readiness** remains blocked by the production authorization and serving boundaries, any known or unknown rights gaps, and an unassessed real withdrawal rehearsal. Synthetic publication and withdrawal tests are engineering evidence only. The assessment creates no release, change to rights, pointer movement, or audit event.
 - **Parking evidence** remains unknown for legality, occupancy, availability, and fit. DS11 Policy parsing and same-batch references establish structural coherence. Posted signs, temporary restrictions, permits, authoritative legal backing, and full-stay applicability require separate evidence.
 
@@ -62,7 +62,7 @@ An optional private `--baseline-file` has `schema_version: 1`, an opaque `eviden
 
 ## Output and recovery
 
-The command emits only a private report receipt. A final directory named for the SHA-256 of `readiness.json` contains that JSON, `READINESS_REPORT.md`, and `SHA256SUMS`. A complete blocked report exits zero. An integrity or filesystem failure exits nonzero. Reports intentionally omit raw records, full source payloads, credentials, physical geometry coordinates and approval actors. Keep all generated reports outside Git.
+The command emits only a private report receipt. A final directory named for the SHA-256 of `readiness.json` contains that JSON, `READINESS_REPORT.md`, and `SHA256SUMS`. A complete blocked report exits zero. An integrity or filesystem failure exits nonzero. Reports intentionally omit raw records, full source payloads, credentials, physical geometry coordinates and approval actors. Keep all generated reports outside Git. The corrected output uses schema and readiness policy v2. Checklist and historical baseline input retain v1, as do comparison metrics. Preserve older private reports for audit and rerun the same inputs to obtain the corrected evidence outcome and declaration labels.
 
 The tool writes and syncs both files in private scratch and atomically promotes the whole directory. Repeating the same snapshot and inputs verifies and reuses the exact bytes. Rerun with the same arguments after interruption. A conflicting final report is kept for investigation and must never be repaired in place. A new verified snapshot or checklist revision produces a new report directory. Rollback is retaining the previous private report and ceasing use of the new tool. There are no publication or database changes to reverse.
 

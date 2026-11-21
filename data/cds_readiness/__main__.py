@@ -21,6 +21,7 @@ from data.cds_validate.__main__ import (
 from . import review, snapshot
 
 _REVIEW_FILE_LIMIT = 1024 * 1024
+_REPORT_VERSION = 2
 
 
 def _read_private_json(path):
@@ -56,8 +57,9 @@ def _render(report):
         f"- Scope and Batch `{binding['scope_key']}` / `{binding['batch_id']}`",
         f"- Candidate `{binding['candidate_id']}`",
         "",
-        "## Technical pipeline and quarantine",
+        "## Verified technical integrity and quarantine",
         "",
+        "The retained artifact bytes, database-anchored Stage, exact candidate, and projection were verified.",
     ]
     for role, group in qa["roles"].items():
         dispositions = group["dispositions"]
@@ -75,9 +77,35 @@ def _render(report):
         "",
         "## Rights, coverage and placement",
         "",
-        f"- Registry rights status: {source['registered_rights_status']}. See the rights checklist for independent evidence.",
+        f"- Registry rights status: {source['registered_rights_status']}. This is a database observation.",
         f"- Boundary comparison: {coverage['comparison_status']}. The comparison uses projected Zone lines as its denominator.",
         "- Curb lines remain source-reported. Area membership is a grouping signal.",
+        "",
+        "## Supplied evidence assertions",
+        "",
+    ]
+    claims = [
+        (name, item)
+        for name, item in report["checklist"].items()
+        if item["declared_state"] is not None
+    ]
+    for name, item in claims:
+        ref = item["evidence_ref"] or "none"
+        lines.append(
+            f"- `{name}`: declared `{item['declared_state']}`, reference `{ref}`, verification `UNVERIFIED`."
+        )
+    if not claims:
+        lines.append("- No checklist items were supplied.")
+    if report["withholding_assertions"]:
+        lines.append(
+            "- Supplied withholding references are retained as unverified assertions in `readiness.json`."
+        )
+    lines += [
+        "",
+        "## Independent approvals and publication authorization",
+        "",
+        "- Independent approval verification is `NOT_ASSESSED`. Verification of the record, reviewer identity, authority, and independence is deferred.",
+        "- Publication authorization is missing. The report confers no authority to publish.",
         "",
         "## Parking legality and publication security",
         "",
@@ -241,11 +269,11 @@ def run(
             "stage_schema_version": 2,
             "validation_schema_version": VALIDATOR_VERSION,
             "geometry_engine": lineage["geometry_engine"],
-            "metric_schema_version": review.VERSION,
+            "metric_schema_version": review.METRIC_SCHEMA_VERSION,
         }
         report = {
-            "assessment_schema_version": review.VERSION,
-            "readiness_policy_version": review.VERSION,
+            "assessment_schema_version": _REPORT_VERSION,
+            "readiness_policy_version": review.POLICY_VERSION,
             "state": "ASSESSMENT_COMPLETE",
             "recommendation": "NO_GO",
             "public_eligible": False,
@@ -256,7 +284,14 @@ def run(
             "qa": qa,
             "coverage": coverage,
             "checklist": items,
-            "documented_withholdings": withheld,
+            "withholding_assertions": {
+                locator: {"evidence_ref": ref, "verification_status": "UNVERIFIED"}
+                for locator, ref in withheld.items()
+            },
+            "independent_approval_verification": {
+                "status": "NOT_ASSESSED",
+                "reason": "AUTHORITATIVE_ATTESTATION_VERIFICATION_DEFERRED",
+            },
             "placement": {
                 "proposed_claim": claim,
                 "projected_geometry_provenance": "SOURCE_REPORTED",
@@ -269,7 +304,7 @@ def run(
                 "independent_placement_requirement": {
                     "state": "NOT_APPLICABLE"
                     if claim == "SOURCE_REPORTED_ONLY"
-                    else items["independent_placement"]["state"],
+                    else items["independent_placement"]["verification_status"],
                     "reason": "SOURCE_REPORTED_ONLY_CLAIM"
                     if claim == "SOURCE_REPORTED_ONLY"
                     else "CLAIM_REQUIRES_INDEPENDENT_PLACEMENT",
@@ -296,7 +331,7 @@ def run(
                 "real_withdrawal_rehearsal": "NOT_ASSESSED",
             },
             "reproducibility": {
-                "tool_version": review.VERSION,
+                "tool_version": _REPORT_VERSION,
                 "comparison_basis": basis,
                 "evidence_sha256": digest(canonical(evidence))
                 if evidence is not None
