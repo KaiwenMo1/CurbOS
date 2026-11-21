@@ -1,0 +1,283 @@
+openapi: 3.1.0
+info:
+  title: CurbOS Parking Discovery API
+  version: 1.0.0
+  description: Release-pinned source evidence. PR-05 permits synthetic results only in isolated tests.
+paths:
+  /v1/parking/releases/current:
+    get:
+      operationId: getCurrentParkingRelease
+      parameters:
+        - $ref: '#/components/parameters/Scope'
+      responses:
+        '200':
+          description: Current release or explicit no-public-release state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Release'
+              examples:
+                noPublicRelease:
+                  value:
+                    scope: synthetic-review
+                    publication_state: NO_PUBLIC_RELEASE
+                    data_status: NO_ACTIVE_RELEASE
+                    release_id: null
+                    pointer_version: 0
+                    is_current: false
+                    public_eligible: false
+                    activated_at: null
+                    source_as_of: null
+                    attribution: []
+                    limitations: [NO_AUTHORIZED_PUBLIC_PARKING_EVIDENCE]
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '405': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/parking/map:
+    get:
+      operationId: getParkingMap
+      parameters:
+        - $ref: '#/components/parameters/Scope'
+        - name: bbox
+          in: query
+          required: true
+          description: Comma-separated west,south,east,north in WGS84. Each axis spans at most 0.25 degrees. Antimeridian wrapping is unsupported.
+          schema: {type: string}
+        - $ref: '#/components/parameters/OptionalRelease'
+        - name: cursor
+          in: query
+          description: Opaque cursor bound to the release, scope and bounding box. Expires after 15 minutes.
+          schema: {type: string, maxLength: 1024}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 250, default: 100}
+      responses:
+        '200':
+          description: GeoJSON features, release metadata, coverage status and pagination links.
+          content:
+            application/geo+json:
+              schema:
+                $ref: '#/components/schemas/ParkingMap'
+              examples:
+                syntheticOutsideScope:
+                  value:
+                    type: FeatureCollection
+                    features: []
+                    meta:
+                      scope: synthetic-review
+                      publication_state: ACTIVE
+                      data_status: SYNTHETIC_TEST_DATA
+                      release_id: 00000000-0000-4000-8000-000000000001
+                      pointer_version: 1
+                      is_current: true
+                      public_eligible: false
+                      activated_at: '2026-11-21T12:00:00Z'
+                      source_as_of: null
+                      attribution: [CurbOS synthetic test fixtures]
+                      limitations: [DISCOVERY_ONLY, CURB_PLACEMENT_UNVERIFIED, PARKING_RULES_AVAILABILITY_AND_FIT_UNVERIFIED]
+                      coverage_status: OUTSIDE_REVIEWED_SCOPE
+                      request_status: COMPLETE
+                      exclusions:
+                        - {reason: VIEWPORT_EXCLUSIONS, count: null, count_status: NOT_COMPUTED}
+                    links: {next_cursor: null}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '405': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '410':
+          $ref: '#/components/responses/Error'
+          description: RELEASE_WITHDRAWN for a pin or cursor whose release, scope serving eligibility, or source rights were withdrawn.
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/parking/zones/{source_zone_id}:
+    get:
+      operationId: getPublishedZone
+      parameters:
+        - $ref: '#/components/parameters/Scope'
+        - name: source_zone_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/UUID'}
+        - name: release_id
+          in: query
+          required: true
+          schema: {$ref: '#/components/schemas/UUID'}
+      responses:
+        '200':
+          description: A feature and its source Policy references from the selected frozen release.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZoneDetail'
+              examples:
+                syntheticFeature:
+                  value:
+                    scope: synthetic-review
+                    publication_state: ACTIVE
+                    data_status: SYNTHETIC_TEST_DATA
+                    release_id: 00000000-0000-4000-8000-000000000001
+                    pointer_version: 1
+                    is_current: true
+                    public_eligible: false
+                    activated_at: '2026-11-21T12:00:00Z'
+                    source_as_of: null
+                    attribution: [CurbOS synthetic test fixtures]
+                    limitations: [DISCOVERY_ONLY, CURB_PLACEMENT_UNVERIFIED, PARKING_RULES_AVAILABILITY_AND_FIT_UNVERIFIED]
+                    feature:
+                      type: Feature
+                      id: 00000000-0000-4000-8000-000000000002
+                      geometry: {type: LineString, coordinates: [[0.01, 0.01], [0.01, 0.02]]}
+                      properties:
+                        source_zone_id: 00000000-0000-4000-8000-000000000002
+                        publisher: synthetic-test
+                        source_as_of: null
+                        source_artifact_id: 00000000-0000-4000-8000-000000000003
+                        geometry_sha256: '1111111111111111111111111111111111111111111111111111111111111111'
+                        geometry_evidence: SOURCE_REPORTED
+                        curb_placement: UNVERIFIED
+                        street_side: LEFT
+                        road_reference: fixture-road
+                        policy_reference_status: RESOLVED_REFERENCES_ONLY
+                        parking_legality: UNKNOWN
+                        occupancy: UNKNOWN
+                        availability: UNKNOWN
+                        qa_codes: []
+                    policy_references:
+                      - {source_policy_id: 00000000-0000-4000-8000-000000000004, source_position: 0}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '405': {$ref: '#/components/responses/Error'}
+        '410':
+          $ref: '#/components/responses/Error'
+          description: RELEASE_WITHDRAWN for a pinned release withdrawn directly, closed by scope withdrawal, or affected by source rights withdrawal.
+        '503': {$ref: '#/components/responses/Error'}
+components:
+  parameters:
+    Scope:
+      name: scope
+      in: query
+      required: true
+      schema: {type: string, pattern: '^[A-Za-z0-9_.-]{1,100}$'}
+    OptionalRelease:
+      name: release_id
+      in: query
+      description: Pin an eligible release in this scope. After a scope withdrawal, the pinned release must have been explicitly selected by a later activation or rollback. A missing or withdrawn pin never falls back.
+      schema: {$ref: '#/components/schemas/UUID'}
+  responses:
+    Error:
+      description: Sanitized API error.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error:
+                type: object
+                required: [code, message, request_id, retryable]
+                properties:
+                  code: {type: string}
+                  message: {type: string}
+                  request_id: {type: string}
+                  retryable: {type: boolean}
+  schemas:
+    UUID:
+      type: string
+      format: uuid
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    Release:
+      type: object
+      required: [scope, publication_state, data_status, release_id, pointer_version, is_current, public_eligible, activated_at, source_as_of, attribution, limitations]
+      properties:
+        scope: {type: string}
+        publication_state: {enum: [ACTIVE, NO_PUBLIC_RELEASE, WITHDRAWN]}
+        data_status: {enum: [SYNTHETIC_TEST_DATA, NO_ACTIVE_RELEASE, WITHDRAWN]}
+        release_id:
+          oneOf:
+            - $ref: '#/components/schemas/UUID'
+            - {type: 'null'}
+        pointer_version: {type: integer, minimum: 0}
+        is_current: {type: boolean}
+        public_eligible: {const: false}
+        activated_at: {type: [string, 'null'], format: date-time}
+        source_as_of: {type: [string, 'null'], format: date-time}
+        attribution: {type: array, items: {type: string}}
+        limitations: {type: array, items: {type: string}}
+    ZoneFeature:
+      type: object
+      required: [type, id, geometry, properties]
+      properties:
+        type: {const: Feature}
+        id: {$ref: '#/components/schemas/UUID'}
+        geometry:
+          type: object
+          required: [type, coordinates]
+          properties:
+            type: {const: LineString}
+            coordinates:
+              type: array
+              minItems: 2
+              items: {type: array, minItems: 2, maxItems: 2, items: {type: number}}
+        properties:
+          type: object
+          required: [source_zone_id, publisher, source_as_of, source_artifact_id, geometry_sha256, geometry_evidence, curb_placement, street_side, road_reference, policy_reference_status, parking_legality, occupancy, availability, qa_codes]
+          properties:
+            source_zone_id: {$ref: '#/components/schemas/UUID'}
+            publisher: {type: string}
+            source_as_of: {type: [string, 'null'], format: date-time}
+            source_artifact_id: {$ref: '#/components/schemas/UUID'}
+            geometry_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+            geometry_evidence: {const: SOURCE_REPORTED}
+            curb_placement: {const: UNVERIFIED}
+            street_side: {enum: [LEFT, RIGHT]}
+            road_reference: {type: [string, 'null']}
+            policy_reference_status: {const: RESOLVED_REFERENCES_ONLY}
+            parking_legality: {const: UNKNOWN}
+            occupancy: {const: UNKNOWN}
+            availability: {const: UNKNOWN}
+            qa_codes: {type: array, items: {type: string}}
+    ParkingMap:
+      type: object
+      required: [type, features, meta, links]
+      properties:
+        type: {const: FeatureCollection}
+        features: {type: array, maxItems: 250, items: {$ref: '#/components/schemas/ZoneFeature'}}
+        meta:
+          allOf:
+            - $ref: '#/components/schemas/Release'
+            - type: object
+              required: [coverage_status, request_status, exclusions]
+              properties:
+                coverage_status:
+                  enum: [OUTSIDE_REVIEWED_SCOPE, NOT_ASSESSED, ASSESSED_NO_SOURCE_FEATURES, PARTIAL_SOURCE_COVERAGE, NO_PUBLIC_RELEASE]
+                request_status: {const: COMPLETE}
+                exclusions:
+                  type: array
+                  items:
+                    type: object
+                    required: [reason, count, count_status]
+                    properties:
+                      reason: {const: VIEWPORT_EXCLUSIONS}
+                      count: {type: 'null'}
+                      count_status: {const: NOT_COMPUTED}
+        links:
+          type: object
+          required: [next_cursor]
+          properties:
+            next_cursor: {type: [string, 'null']}
+    ZoneDetail:
+      allOf:
+        - $ref: '#/components/schemas/Release'
+        - type: object
+          required: [feature, policy_references]
+          properties:
+            release_id: {$ref: '#/components/schemas/UUID'}
+            feature: {$ref: '#/components/schemas/ZoneFeature'}
+            policy_references:
+              type: array
+              items:
+                type: object
+                required: [source_policy_id, source_position]
+                properties:
+                  source_policy_id: {$ref: '#/components/schemas/UUID'}
+                  source_position: {type: integer, minimum: 0}

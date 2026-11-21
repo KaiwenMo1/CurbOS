@@ -15,6 +15,7 @@ import (
 type config struct {
 	listenAddr       string
 	readinessTimeout time.Duration
+	discoveryTimeout time.Duration
 	shutdownTimeout  time.Duration
 	database         *pgxpool.Config
 }
@@ -34,6 +35,10 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if err != nil {
 		return config{}, err
 	}
+	discovery, err := readDuration(getenv, "CURBOS_DISCOVERY_TIMEOUT", 2*time.Second, 5*time.Second)
+	if err != nil {
+		return config{}, err
+	}
 	shutdown, err := readDuration(getenv, "CURBOS_SHUTDOWN_TIMEOUT", 10*time.Second, 30*time.Second)
 	if err != nil {
 		return config{}, err
@@ -42,7 +47,7 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if err != nil {
 		return config{}, err
 	}
-	return config{listenAddr: addr, readinessTimeout: ready, shutdownTimeout: shutdown, database: database}, nil
+	return config{listenAddr: addr, readinessTimeout: ready, discoveryTimeout: discovery, shutdownTimeout: shutdown, database: database}, nil
 }
 
 func readDuration(getenv func(string) string, key string, fallback, max time.Duration) (time.Duration, error) {

@@ -10,9 +10,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/KaiwenMo1/CurbOS/backend/internal/discovery"
 	"github.com/KaiwenMo1/CurbOS/backend/internal/platform/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -51,10 +53,18 @@ func run(ctx context.Context, cfg config, logger *slog.Logger) error {
 func serveAPI(ctx context.Context, listener net.Listener, cfg config, pool *pgxpool.Pool, logger *slog.Logger) error {
 	requestCtx, cancelRequests := context.WithCancel(context.Background())
 	defer cancelRequests()
+	health := newHandler(func(ctx context.Context) error {
+		return postgres.CheckReady(ctx, pool)
+	}, cfg.readinessTimeout, logger)
+	parking := discovery.NewHandler(pool, cfg.discoveryTimeout)
 	server := &http.Server{
-		Handler: newHandler(func(ctx context.Context) error {
-			return postgres.CheckReady(ctx, pool)
-		}, cfg.readinessTimeout, logger),
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/v1/parking/") {
+				parking.ServeHTTP(w, r)
+				return
+			}
+			health.ServeHTTP(w, r)
+		}),
 		BaseContext:       func(net.Listener) context.Context { return requestCtx },
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,

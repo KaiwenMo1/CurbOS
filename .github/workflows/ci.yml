@@ -84,7 +84,7 @@ jobs:
           npm --prefix apps/web ci
           npm --prefix apps/web exec -- playwright install --with-deps --only-shell chromium
 
-      - name: Run database, API and browser integration checks
+      - name: Run database, Discovery API and browser integration checks
         run: make e2e-test
 
       - name: Set up offline capture test environment
