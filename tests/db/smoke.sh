@@ -165,6 +165,7 @@ bash db/goose.sh up
 require_equal 1 "$(sql -c "$evidence_applied_sql")"
 require_equal 1 "$(sql -c "SELECT count(*) FROM pg_catalog.pg_namespace WHERE nspname = 'publication';")"
 require_equal publication.release_verification "$(sql -c "SELECT to_regclass('publication.release_verification');")"
+require_equal 1 "$(sql -c "SELECT count(*) FROM pg_catalog.pg_namespace WHERE nspname = 'discovery';")"
 require_equal 0 "$(sql -c 'SELECT count(*) FROM sources.publication_scope;')"
 history=$(sql -c "$history_sql")
 bash db/goose.sh up
@@ -188,6 +189,20 @@ require_equal 4326 "$(sql -c "$postgis_sql")"
 bash db/goose.sh up
 require_equal "$history" "$(sql -c "$history_sql")"
 printf 'PASS stopped DB fails migration and recreated container preserves data\n'
+
+if [[ "$mode" != db ]]; then
+  endpoint=$("${compose[@]}" port db 5432)
+  require_equal 127.0.0.1 "${endpoint%:*}"
+  (
+    cd backend
+    unset PGSERVICE PGSERVICEFILE PGOPTIONS
+    export CURBOS_API_INTEGRATION=1 PGPASSWORD="$POSTGRES_PASSWORD"
+    CURBOS_TEST_DB_CONTAINER=$("${compose[@]}" ps -q db)
+    export CURBOS_TEST_DB_CONTAINER
+    export CURBOS_DATABASE_URL="postgres://curbos@$endpoint/curbos?sslmode=disable"
+    go test -race -count=1 -v -run '^TestDiscoveryIntegration$' ./internal/discovery
+  )
+fi
 
 if [[ "$mode" == e2e ]]; then
   # The persistence check recreated the container. Resolve the current identity and port.

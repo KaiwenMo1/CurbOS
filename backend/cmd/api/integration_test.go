@@ -115,6 +115,9 @@ func TestAPIIntegration(t *testing.T) {
 		t.Fatalf("migrate isolated database: %v\n%s", err, output)
 	}
 	expect("/readyz", 200, "{\"status\":\"ready\"}\n")
+	if code, body := request("/v1/parking/releases/current?scope=synthetic-missing"); code != 404 || !strings.Contains(body, "SCOPE_UNKNOWN") {
+		t.Fatalf("normal API did not route the Discovery request: %d %q", code, body)
+	}
 
 	control := func(action string) error {
 		controlCtx, stopControl := context.WithTimeout(context.Background(), 10*time.Second)

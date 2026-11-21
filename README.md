@@ -4,7 +4,7 @@ CurbOS is an evidence-aware, street-parking-first application under active devel
 
 ## Current capability
 
-- A Go HTTP API with liveness and PostgreSQL readiness endpoints.
+- A Go HTTP API with liveness, PostgreSQL readiness, and release-pinned Discovery endpoints. Ordinary Discovery requests have no authorized public release.
 - A responsive React/TypeScript/Vite map shell with Going Home and Going Out modes, optional MapLibre rendering, and a live backend readiness check. **No verified parking data available.** remains visible in every backend state.
 - A local PostgreSQL/PostGIS service with a Goose migration baseline.
 - Reproducible formatting, linting, testing, type-checking, build, and CI commands.
@@ -46,7 +46,19 @@ docker compose -f compose.yaml up -d --wait --wait-timeout 90 db
 make db-migrate
 ```
 
-Start the Go API in a separate terminal from the repository root. The command passes the development password from the running container through the process environment.
+On a fresh local database, create a dedicated API login from the PostgreSQL administrator console. `\password` prompts for a new password without putting it on the command line. Reuse the login on subsequent starts.
+
+```bash
+docker compose -f compose.yaml exec db psql -X -U curbos -d curbos
+```
+
+```sql
+CREATE ROLE curbos_local_api LOGIN IN ROLE curbos_api_reader;
+\password curbos_local_api
+\quit
+```
+
+Start the Go API in a separate terminal from the repository root and enter that reader password when prompted.
 
 ```bash
 (
@@ -54,9 +66,10 @@ Start the Go API in a separate terminal from the repository root. The command pa
   set +x
   unset PGSERVICE PGSERVICEFILE PGOPTIONS
   endpoint=$(docker compose -f compose.yaml port db 5432)
-  PGPASSWORD=$(docker compose -f compose.yaml exec -T db printenv POSTGRES_PASSWORD)
+  read -rs -p 'Local API reader password: ' PGPASSWORD
+  printf '\n'
   export PGPASSWORD
-  export CURBOS_DATABASE_URL="postgres://curbos@$endpoint/curbos?sslmode=disable"
+  export CURBOS_DATABASE_URL="postgres://curbos_local_api@$endpoint/curbos?sslmode=disable"
   export CURBOS_HTTP_ADDR=127.0.0.1:8080
   cd backend
   go run ./cmd/api
@@ -100,6 +113,7 @@ Export the variables for the API process. Compose reads its local `.env` file se
 | `CURBOS_DATABASE_URL` | Required | A single PostgreSQL TCP URL with an explicit host, user, and database. The port defaults to `5432`. Set a non-empty URL password or omit it and use a pgx credential source such as `PGPASSWORD`. |
 | `CURBOS_HTTP_ADDR` | `127.0.0.1:8080` | An IP address, `localhost`, or an empty host with a port from 1 to 65535. An empty host listens on all interfaces. |
 | `CURBOS_READY_TIMEOUT` | `1s` | Go duration from `1ms` to `5s`, including pool acquisition and the readiness query. |
+| `CURBOS_DISCOVERY_TIMEOUT` | `2s` | Go duration from `1ms` to `5s`, including pool acquisition and the Discovery query. |
 | `CURBOS_SHUTDOWN_TIMEOUT` | `10s` | Go duration from `1ms` to `30s` for HTTP drain and pool cleanup combined. |
 
 The database URL defaults to `sslmode=verify-full` when the mode is omitted. Set `sslmode=disable` only for a loopback database such as the Compose service. Explicit `verify-ca` and `require` modes are also supported. Keep credentials out of command history, version control, and logs. Use a dedicated runtime role with access to the installed extension and Goose history in deployments.
@@ -115,9 +129,9 @@ curl -i http://127.0.0.1:8080/readyz
 | `GET /readyz` | `200` with `{"status":"ready"}` when PostgreSQL answers the baseline check. |
 | `GET /readyz` during an outage, timeout, or missing baseline | `503` with `{"status":"not_ready"}`. |
 | Unsupported method on a health route | `405` with `Allow: GET` and `{"status":"method_not_allowed"}`. HTTP suppresses the body for HEAD requests. |
-| Unknown path | `404` with `{"status":"not_found"}`. |
+| Unknown path outside `/v1/parking/` | `404` with `{"status":"not_found"}`. |
 
-Application responses use `Content-Type: application/json` and `Cache-Control: no-store`. See the [OpenAPI contract](contracts/openapi/health.yaml).
+Health responses use `Content-Type: application/json` and `Cache-Control: no-store`. [Health OpenAPI contract](contracts/openapi/health.yaml)
 
 The API validates configuration and creates one lazy connection pool at startup. Each readiness request uses one bounded SQL query to check that the PostGIS function works, the extension is installed, and the latest record for Goose migration 1 is applied. This lets an API that starts before migration or during an outage become ready on a subsequent request. M1 readiness covers the database baseline. Parking data coverage and legal recommendations have separate acceptance gates.
 
@@ -173,6 +187,10 @@ M2 PR-02 verifies a local manifest and captures DS13 Zones and DS11 Policies, wi
 ### Private release preparation
 
 The offline validator prepares private candidate packages. Apply through migration `00004` for private registration, independent candidate verification and approval, frozen projections, and an audited pointer workflow gated to administrator-enrolled synthetic fixtures. Real releases remain private. The local `curbos` database owner is for administration. Use a separate least-privileged login for the API. [Validation runbook](data/cds_validate/README.md) [Publication runbook](data/cds_publish/README.md)
+
+### Parking Discovery API
+
+Migration `00005` grants a narrow read capability and adds coverage, map, and pinned Zone detail routes under `/v1/parking`. Ordinary mode returns no authorized public release. The disposable `make api-test` harness alone enables synthetic responses and checks release consistency across activation, rollback, and withdrawal. [API behavior and setup](contracts/openapi/DISCOVERY.md) [Discovery OpenAPI](contracts/openapi/discovery.yaml)
 
 ### Browser-to-database quality gate
 
