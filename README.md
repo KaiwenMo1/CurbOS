@@ -196,6 +196,10 @@ The offline validator prepares private candidate packages. Apply through migrati
 
 Apply through migration `00006` for the read capability, the coverage, map, and pinned Zone detail routes under `/v1/parking`, and the scope withdrawal guard. Ordinary mode returns no authorized public release. The disposable `make api-test` harness alone enables synthetic responses and checks release consistency across activation, rollback, and withdrawal. [API behavior and setup](contracts/openapi/DISCOVERY.md) [Discovery OpenAPI](contracts/openapi/discovery.yaml)
 
+### Private publication readiness
+
+M2 PR-07 adds an offline, read-only assessment for an exact private CDS batch, stage, and candidate. It reports technical readiness, unresolved source and field evidence, and a separate publication decision. Real publication remains blocked. [Assessment runbook](data/cds_readiness/README.md)
+
 ### Browser-to-database quality gate
 
 Install dependencies with `make bootstrap`. Then install Chromium for the pinned Playwright version and run the complete local integration path. On Linux, install the browser's system libraries with Playwright's `--with-deps` option if your environment needs them.

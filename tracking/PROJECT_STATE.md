@@ -2,7 +2,7 @@
 
 Updated 2026-11-21.
 
-- **Milestone** M2 PR-06, Evidence-Aware MapLibre Discovery. M1 foundation merged.
+- **Milestone** M2 PR-07, Real-Source Readiness and Publication Gate. M1 foundation merged.
 - **PR-01** Merged in [PR #1](https://github.com/KaiwenMo1/CurbOS/pull/1) as `d023604`. [PR CI passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44622343482).
 - **PR-02** Merged in [PR #2](https://github.com/KaiwenMo1/CurbOS/pull/2) as `bcfe3ec`. The [PR CI run passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44624913175).
 - **PR-03** Merged in [PR #3](https://github.com/KaiwenMo1/CurbOS/pull/3) as `91bfbad`. The API provides process liveness and bounded PostgreSQL readiness with the PostGIS and Goose baseline. [PR CI passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44628781477).
@@ -13,8 +13,10 @@ Updated 2026-11-21.
 - **M2 PR-03** Merged in [PR #9](https://github.com/KaiwenMo1/CurbOS/pull/9) as `f10ec69`. It validates Stage Schema v2 and prepares private candidate packages. [Hosted checks passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44705155071). [Validation runbook](../data/cds_validate/README.md)
 - **M2 PR-04** Merged in [PR #10](https://github.com/KaiwenMo1/CurbOS/pull/10) as `47776d3`. Private registration, independent verification and approval, and audited pointer changes are available for enrolled synthetic fixtures. [Publication runbook](../data/cds_publish/README.md)
 - **M2 PR-05** Merged in [PR #11](https://github.com/KaiwenMo1/CurbOS/pull/11) as `b54c54e`. The pinned Discovery API closes historical pins and cursors on scope withdrawal. [Discovery API contract](../contracts/openapi/DISCOVERY.md)
-- **M2 PR-06** Adds the release-aware frontend and isolated synthetic rendering checks on `m2/pr-06-maplibre-discovery-ui`. All 48 frontend tests passed. Chromium verified the ordinary no-public-release path through Go/PostGIS and real MapLibre rendering, pinned details, keyboard access, and withdrawal with mocked synthetic responses. [Frontend runbook](../apps/web/DISCOVERY.md)
-- **Next review gate** Independent ChatGPT and human review of the M2 PR-06 draft. The ordinary build displays no verified parking data. Public release authorization requires separate review.
+- **M2 PR-06** Merged in [PR #12](https://github.com/KaiwenMo1/CurbOS/pull/12) as `52e80ea`. The browser uses the pinned Discovery API and shows no verified parking data in ordinary mode. [Frontend runbook](../apps/web/DISCOVERY.md)
+- **M2 PR-07** The offline assessor verifies private artifacts, stage, candidate, and projection in a read-only transaction. The synthetic CDS suite passed 72 tests, including no database changes after successful or failed assessments. Real-source evidence remains `NOT_ASSESSED` and the publication decision remains `NO_GO`. [Readiness runbook](../data/cds_readiness/README.md)
+- **M2 PR-07 review fix** [Draft PR #13](https://github.com/KaiwenMo1/CurbOS/pull/13) now reports supplied approval states and references as unverified assertions in schema v2. The 74-test synthetic suite passed. Technical integrity remains independently checked, and evidence and publication readiness remain blocked. [Readiness runbook](../data/cds_readiness/README.md)
+- **Next review gate** Independent Review Round 2 on Draft PR #13. Authoritative attestation verification, real-archive assessment, independent rights and field review, and production publication authorization require separate decisions.
 
 ## M1 acceptance evidence
 
