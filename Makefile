@@ -51,11 +51,11 @@ e2e-test:
 	bash tests/db/smoke.sh e2e
 
 cds-unit:
-	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest discover -s tests/cds -p test_unit.py -v
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest discover -s tests/cds -p 'test_*unit.py' -v
 
 cds-lint:
-	$(RUFF) check data/cds_capture data/cds_validate data/cds_publish tests/cds
-	$(RUFF) format --check data/cds_capture data/cds_validate data/cds_publish tests/cds
+	$(RUFF) check data/cds_capture data/cds_validate data/cds_publish data/cds_readiness tests/cds
+	$(RUFF) format --check data/cds_capture data/cds_validate data/cds_publish data/cds_readiness tests/cds
 
 cds-test:
 	CURBOS_TEST_PYTHON="$(PYTHON)" bash tests/db/smoke.sh cds

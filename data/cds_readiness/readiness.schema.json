@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CurbOS private CDS readiness report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "assessment_schema_version", "readiness_policy_version", "state", "recommendation",
+    "public_eligible", "subject", "lineage", "source", "registration", "qa", "coverage",
+    "checklist", "documented_withholdings", "placement", "parking_evidence",
+    "publication_controls", "reproducibility", "historical_comparison", "outcomes"
+  ],
+  "properties": {
+    "assessment_schema_version": {"const": 1},
+    "readiness_policy_version": {"const": 1},
+    "state": {"const": "ASSESSMENT_COMPLETE"},
+    "recommendation": {"const": "NO_GO"},
+    "public_eligible": {"const": false},
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["batch_id", "scope_key", "stage_report_sha256", "candidate_id", "candidate_report_sha256"],
+      "properties": {
+        "batch_id": {"$ref": "#/$defs/uuid"},
+        "scope_key": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,100}$"},
+        "stage_report_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_id": {"$ref": "#/$defs/uuid"},
+        "candidate_report_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "required": ["batch_id", "scope_key", "dataset_id", "capture_manifest_sha256", "stage_report_sha256",
+        "artifacts", "adapter_version", "source_profile_version", "geometry_engine"],
+      "properties": {
+        "dataset_id": {"$ref": "#/$defs/uuid"},
+        "capture_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "stage_report_sha256": {"$ref": "#/$defs/sha256"},
+        "artifacts": {
+          "type": "object",
+          "required": ["zones", "policies"],
+          "propertyNames": {"enum": ["zones", "policies", "areas"]},
+          "additionalProperties": {
+            "type": "object",
+            "required": ["artifact_id", "sha256", "byte_size", "declared_source_crs"],
+            "properties": {
+              "artifact_id": {"$ref": "#/$defs/uuid"},
+              "sha256": {"$ref": "#/$defs/sha256"},
+              "byte_size": {"type": "integer", "minimum": 1},
+              "declared_source_crs": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["publisher_key", "dataset_key", "source_profile", "source_class",
+        "catalog_uri_sha256", "registered_rights_status", "registry_rights_reference_present", "component_origins"],
+      "properties": {
+        "source_class": {"enum": ["SYNTHETIC_DECLARED", "REAL_OR_UNCLASSIFIED"]},
+        "catalog_uri_sha256": {"$ref": "#/$defs/sha256"},
+        "registered_rights_status": {"enum": ["UNKNOWN", "REVIEW_REQUIRED", "APPROVED", "DENIED", "WITHDRAWN"]},
+        "registry_rights_reference_present": {"type": "boolean"},
+        "component_origins": {
+          "type": "object",
+          "required": ["zones", "policies"],
+          "additionalProperties": {
+            "type": "object",
+            "required": ["evidence_ref", "distribution_uri_sha256", "registered_acquired_at", "source_as_of"],
+            "properties": {
+              "distribution_uri_sha256": {"$ref": "#/$defs/sha256"},
+              "registered_acquired_at": {"type": "string", "format": "date-time"},
+              "source_as_of": {"type": ["string", "null"], "format": "date-time"}
+            }
+          }
+        }
+      }
+    },
+    "registration": {
+      "type": "object",
+      "required": ["status", "projection_plan_sha256"],
+      "properties": {
+        "status": {"enum": ["NOT_REGISTERED", "CANDIDATE", "VALIDATED", "APPROVED", "FROZEN", "REJECTED"]},
+        "release_id": {"$ref": "#/$defs/uuid"},
+        "projection_plan_sha256": {"$ref": "#/$defs/sha256"},
+        "verified_receipt_present": {"type": "boolean"},
+        "approval_receipt_present": {"type": "boolean"},
+        "is_active_pointer_target": {"type": "boolean"}
+      }
+    },
+    "qa": {
+      "type": "object",
+      "required": ["roles", "affected_records", "policy_references", "policy_structure", "policy_usage",
+        "area_membership", "area_geometry", "projection", "comparable_metrics"],
+      "properties": {
+        "roles": {
+          "type": "object",
+          "required": ["zones", "policies"],
+          "additionalProperties": {"type": "object", "required": [
+            "input_rows", "dispositions", "reason_row_counts", "exclusion_reason_row_counts"
+          ]}
+        },
+        "affected_records": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["source_id", "source_index", "artifact_id", "disposition", "reason_codes", "evidence_ref"],
+              "properties": {
+                "source_id": {"anyOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]},
+                "source_index": {"type": "integer", "minimum": 0},
+                "artifact_id": {"$ref": "#/$defs/uuid"},
+                "disposition": {"enum": ["ACCEPTED", "REVIEW_REQUIRED", "EXCLUDED"]},
+                "reason_codes": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                "evidence_ref": {"type": "string", "pattern": "^stage:(zones|policies|areas):[0-9]+$"}
+              }
+            }
+          }
+        },
+        "comparable_metrics": {
+          "type": "object",
+          "additionalProperties": {"type": ["integer", "null"], "minimum": 0}
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["scope_review_status", "review_recorded", "boundary_sha256", "comparison_status",
+        "denominator_projected_zone_lines", "fully_covered", "intersecting_not_covered",
+        "disjoint", "not_fully_covered_zone_ids", "area_membership_is_coverage"],
+      "properties": {
+        "boundary_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "comparison_status": {"enum": ["NOT_ASSESSED", "BOUNDARY_GEOMETRY_ONLY"]},
+        "denominator_projected_zone_lines": {"type": "integer", "minimum": 0},
+        "fully_covered": {"type": ["integer", "null"], "minimum": 0},
+        "intersecting_not_covered": {"type": ["integer", "null"], "minimum": 0},
+        "disjoint": {"type": ["integer", "null"], "minimum": 0},
+        "not_fully_covered_zone_ids": {"type": ["array", "null"], "items": {"$ref": "#/$defs/uuid"}},
+        "area_membership_is_coverage": {"const": false}
+      }
+    },
+    "checklist": {
+      "type": "object",
+      "required": ["publisher_identity", "distribution_origin", "acquisition_date", "published_terms",
+        "private_storage", "transformation", "geometry_redistribution", "attribution",
+        "commercial_and_public_use_restrictions", "downstream_map_display", "revocation_and_updates",
+        "source_qa_decisions", "independent_coverage", "independent_placement"],
+      "maxProperties": 14,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["state", "evidence_ref"],
+        "additionalProperties": false,
+        "properties": {"state": {"enum": ["APPROVED", "BLOCKED", "UNKNOWN"]},
+          "evidence_ref": {"anyOf": [{"$ref": "#/$defs/reviewReference"}, {"type": "null"}]}}
+      }
+    },
+    "documented_withholdings": {
+      "type": "object",
+      "propertyNames": {"pattern": "^(zones|policies|areas):[0-9]+$"},
+      "additionalProperties": {"$ref": "#/$defs/reviewReference"}
+    },
+    "placement": {
+      "type": "object",
+      "required": ["proposed_claim", "projected_geometry_provenance", "physical_placement",
+        "projected_independently_verified_count", "independent_placement_requirement"],
+      "properties": {
+        "proposed_claim": {"enum": ["SOURCE_REPORTED_ONLY", "INDEPENDENTLY_VERIFIED"]},
+        "projected_geometry_provenance": {"const": "SOURCE_REPORTED"},
+        "physical_placement": {"const": "UNKNOWN"},
+        "projected_independently_verified_count": {"const": 0},
+        "independent_placement_requirement": {
+          "type": "object",
+          "required": ["state", "reason"],
+          "properties": {"state": {"enum": ["APPROVED", "BLOCKED", "UNKNOWN", "NOT_APPLICABLE"]},
+            "reason": {"type": "string"}}
+        }
+      }
+    },
+    "parking_evidence": {
+      "type": "object",
+      "required": ["parking_legality", "occupancy", "availability", "physical_fit"],
+      "additionalProperties": {"const": "UNKNOWN"}
+    },
+    "publication_controls": {
+      "const": {
+        "production_publication_process": "BLOCKED", "real_world_authorization": "BLOCKED",
+        "real_data_serving": "BLOCKED", "real_withdrawal_rehearsal": "NOT_ASSESSED"
+      }
+    },
+    "reproducibility": {
+      "type": "object",
+      "required": ["tool_version", "comparison_basis", "evidence_sha256", "baseline_sha256", "database_snapshot"],
+      "properties": {"tool_version": {"const": 1}, "database_snapshot": {"const": "REPEATABLE_READ_READ_ONLY"}}
+    },
+    "historical_comparison": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {"status": {"enum": ["NOT_ASSESSED", "COMPARED"]}}
+    },
+    "outcomes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["TECHNICAL_READINESS", "EVIDENCE_READINESS", "PUBLICATION_READINESS"],
+      "properties": {
+        "TECHNICAL_READINESS": {"$ref": "#/$defs/outcome"},
+        "EVIDENCE_READINESS": {"$ref": "#/$defs/outcome"},
+        "PUBLICATION_READINESS": {
+          "allOf": [
+            {"$ref": "#/$defs/outcome"},
+            {"properties": {"status": {"const": "BLOCKED"}}}
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "reviewReference": {"type": "string", "pattern": "^evidence:[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$"},
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reasons", "evidence_refs"],
+      "properties": {
+        "status": {"enum": ["PASS", "BLOCKED", "NOT_ASSESSED"]},
+        "evidence_refs": {"type": "array", "items": {"type": "string"}},
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["code", "evidence_ref"],
+            "properties": {"code": {"type": "string"}, "evidence_ref": {"type": "string"}}
+          }
+        }
+      }
+    }
+  }
+}
