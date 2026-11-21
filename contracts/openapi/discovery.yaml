@@ -85,7 +85,9 @@ paths:
         '404': {$ref: '#/components/responses/Error'}
         '405': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
-        '410': {$ref: '#/components/responses/Error'}
+        '410':
+          $ref: '#/components/responses/Error'
+          description: RELEASE_WITHDRAWN for a pin or cursor whose release, scope serving eligibility, or source rights were withdrawn.
         '503': {$ref: '#/components/responses/Error'}
   /v1/parking/zones/{source_zone_id}:
     get:
@@ -145,7 +147,9 @@ paths:
         '400': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
         '405': {$ref: '#/components/responses/Error'}
-        '410': {$ref: '#/components/responses/Error'}
+        '410':
+          $ref: '#/components/responses/Error'
+          description: RELEASE_WITHDRAWN for a pinned release withdrawn directly, closed by scope withdrawal, or affected by source rights withdrawal.
         '503': {$ref: '#/components/responses/Error'}
 components:
   parameters:
@@ -157,7 +161,7 @@ components:
     OptionalRelease:
       name: release_id
       in: query
-      description: Pin an eligible published release in this scope. A missing or withdrawn pin never falls back.
+      description: Pin an eligible release in this scope. After a scope withdrawal, the pinned release must have been explicitly selected by a later activation or rollback. A missing or withdrawn pin never falls back.
       schema: {$ref: '#/components/schemas/UUID'}
   responses:
     Error:

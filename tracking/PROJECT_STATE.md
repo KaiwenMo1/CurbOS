@@ -13,7 +13,8 @@ Updated 2026-11-21.
 - **M2 PR-03** Merged in [PR #9](https://github.com/KaiwenMo1/CurbOS/pull/9) as `f10ec69`. It validates Stage Schema v2 and prepares private candidate packages. [Hosted checks passed](https://github.com/KaiwenMo1/CurbOS/actions/runs/44705155071). [Validation runbook](../data/cds_validate/README.md)
 - **M2 PR-04** Merged in [PR #10](https://github.com/KaiwenMo1/CurbOS/pull/10) as `47776d3`. Private registration, independent verification and approval, and audited pointer changes are available for enrolled synthetic fixtures. [Publication runbook](../data/cds_publish/README.md)
 - **M2 PR-05** Adds the three pinned Discovery endpoints and an isolated synthetic read path on `m2/pr-05-pinned-read-api`. Go and PostgreSQL integration tests passed, including a lock-controlled pointer switch, withdrawal, scope and rights changes, and least-privilege checks. All 59 CDS tests and the existing Chromium integration gate passed. [Discovery API contract](../contracts/openapi/DISCOVERY.md)
-- **Next review gate** Independent ChatGPT and human review of the M2 PR-05 draft and verification evidence. Ordinary API reads show no authorized public release. Real data requires separate approval.
+- **M2 PR-05 review fix** [Draft PR #11](https://github.com/KaiwenMo1/CurbOS/pull/11) adds migration `00006` so scope withdrawal closes historical pins and cursors. The disposable API test reproduced the prior leak and verified withdrawal, failed withdrawal, and explicit reactivation behavior. [Discovery runbook](../contracts/openapi/DISCOVERY.md)
+- **Next review gate** Independent Review Round 2 on Draft PR #11. Ordinary API reads show no authorized public release. Real data requires separate approval.
 
 ## M1 acceptance evidence
 

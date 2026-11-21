@@ -190,7 +190,7 @@ The offline validator prepares private candidate packages. Apply through migrati
 
 ### Parking Discovery API
 
-Migration `00005` grants a narrow read capability and adds coverage, map, and pinned Zone detail routes under `/v1/parking`. Ordinary mode returns no authorized public release. The disposable `make api-test` harness alone enables synthetic responses and checks release consistency across activation, rollback, and withdrawal. [API behavior and setup](contracts/openapi/DISCOVERY.md) [Discovery OpenAPI](contracts/openapi/discovery.yaml)
+Apply through migration `00006` for the read capability, the coverage, map, and pinned Zone detail routes under `/v1/parking`, and the scope withdrawal guard. Ordinary mode returns no authorized public release. The disposable `make api-test` harness alone enables synthetic responses and checks release consistency across activation, rollback, and withdrawal. [API behavior and setup](contracts/openapi/DISCOVERY.md) [Discovery OpenAPI](contracts/openapi/discovery.yaml)
 
 ### Browser-to-database quality gate
 

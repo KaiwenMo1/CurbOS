@@ -92,7 +92,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch data.ErrorCode {
 	case "":
 	case "RELEASE_WITHDRAWN":
-		fail(w, http.StatusGone, data.ErrorCode, "The selected release was withdrawn.")
+		fail(w, http.StatusGone, data.ErrorCode, "Serving eligibility was withdrawn for the selected release.")
 		return
 	case "RELEASE_NOT_FOUND", "SCOPE_UNKNOWN", "FEATURE_NOT_PUBLISHED":
 		fail(w, http.StatusNotFound, data.ErrorCode, "The requested evidence is unavailable.")

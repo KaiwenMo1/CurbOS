@@ -128,6 +128,7 @@ func TestDiscoveryIntegration(t *testing.T) {
 	b := seedFixture(t, admin, registrar, verifier, reviewer, 200, a.scope, true)
 	c := seedFixture(t, admin, registrar, verifier, reviewer, 300, "synthetic-discovery-other", true)
 	pending := seedFixture(t, admin, registrar, verifier, reviewer, 400, a.scope, false)
+	d := seedFixture(t, admin, registrar, verifier, reviewer, 500, a.scope, true)
 	testHandler := &handler{pool: reader, timeout: 5 * time.Second, synthetic: true}
 	rand.Read(testHandler.cursorKey[:])
 	synthetic := httptest.NewServer(testHandler)
@@ -165,6 +166,11 @@ func TestDiscoveryIntegration(t *testing.T) {
 		assertError(t, get(t, normal, detail(uid(10), a.releaseID)), 404, "RELEASE_NOT_FOUND")
 		if err := postgres.CheckReady(t.Context(), api); err != nil {
 			t.Fatal("least privileged API reader cannot check readiness")
+		}
+		_, err := reader.Exec(t.Context(), `SELECT discovery.read_synthetic_v5($1,$2,NULL,NULL,0,$3)`, a.scope, a.releaseID, uid(10))
+		var unguarded *pgconn.PgError
+		if !errors.As(err, &unguarded) || unguarded.Code != "42501" {
+			t.Fatalf("synthetic reader could bypass the withdrawal check: %v", err)
 		}
 		for _, statement := range []string{
 			"SELECT discovery.read_synthetic('synthetic-discovery-one', NULL, NULL, NULL, 0, NULL)",
@@ -261,14 +267,53 @@ func TestDiscoveryIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("rollback, withdrawal and rights changes", func(t *testing.T) {
-		change(t, operator, a.scope, &a.releaseID, 2, "ROLLBACK")
-		expectMap(t, get(t, synthetic, mapping), "ACTIVE", "PARTIAL_SOURCE_COVERAGE", a, 3)
-		change(t, operator, a.scope, nil, 3, "WITHDRAW")
-		expectMap(t, get(t, synthetic, mapping), "WITHDRAWN", "NOT_ASSESSED", fixture{}, 4)
+	other := mapPath + "?scope=" + c.scope + "&bbox=0,0,0.1,0.1"
+	oldPage := mapping + "&limit=2&cursor=" + url.QueryEscape(next)
+	t.Run("scope withdrawal closes all historical pins", func(t *testing.T) {
+		_, err := operator.Exec(t.Context(), `SELECT publication.change_pointer($1,NULL,1,'WITHDRAW',$2,$3)`,
+			a.scope, "stale test withdrawal", rand.Text())
+		var conflict *pgconn.PgError
+		if !errors.As(err, &conflict) || conflict.Code != "40001" || conflict.Message != "PUBLICATION_VERSION_CONFLICT" {
+			t.Fatalf("expected stale withdrawal to fail with a CAS conflict: %v", err)
+		}
+		expectMap(t, get(t, synthetic, mapping), "ACTIVE", "PARTIAL_SOURCE_COVERAGE", b, 2)
+		expectDetail(t, get(t, synthetic, detail(uid(10), a.releaseID)), a, 1)
+		expectMap(t, get(t, synthetic, oldPage), "ACTIVE", "PARTIAL_SOURCE_COVERAGE", a, 1)
+
+		change(t, operator, a.scope, nil, 2, "WITHDRAW")
+		expectMap(t, get(t, synthetic, mapping), "WITHDRAWN", "NOT_ASSESSED", fixture{}, 3)
+		got := get(t, synthetic, current)
+		state := decode[release](t, got)
+		if got.status != 200 || state.PublicationState != "WITHDRAWN" || state.DataStatus != "WITHDRAWN" ||
+			state.ReleaseID != nil || state.PointerVersion != 3 {
+			t.Fatalf("unexpected withdrawn scope response: %s", got.body)
+		}
+		for _, path := range []string{detail(uid(10), a.releaseID), detail(uid(10), b.releaseID),
+			mapping + "&release_id=" + a.releaseID, oldPage} {
+			got := get(t, synthetic, path)
+			assertError(t, got, 410, "RELEASE_WITHDRAWN")
+			if strings.Contains(string(got.body), "geometry") || strings.Contains(string(got.body), "policy_references") {
+				t.Fatalf("withdrawn scope disclosed Zone evidence: %s", got.body)
+			}
+		}
+		assertError(t, get(t, synthetic, detail(uid(10), c.releaseID)), 404, "RELEASE_NOT_FOUND")
+		assertError(t, get(t, synthetic, detail(uid(10), d.releaseID)), 404, "RELEASE_NOT_FOUND")
+		expectMap(t, get(t, synthetic, other), "ACTIVE", "PARTIAL_SOURCE_COVERAGE", c, 1)
+	})
+
+	t.Run("reactivation only restores explicitly selected releases", func(t *testing.T) {
+		change(t, operator, a.scope, &d.releaseID, 3, "ACTIVATE")
+		expectMap(t, get(t, synthetic, mapping), "ACTIVE", "PARTIAL_SOURCE_COVERAGE", d, 4)
 		assertError(t, get(t, synthetic, detail(uid(10), a.releaseID)), 410, "RELEASE_WITHDRAWN")
-		assertError(t, get(t, synthetic, mapping+"&cursor="+url.QueryEscape(next)), 410, "RELEASE_WITHDRAWN")
-		other := mapPath + "?scope=" + c.scope + "&bbox=0,0,0.1,0.1"
+		assertError(t, get(t, synthetic, oldPage), 410, "RELEASE_WITHDRAWN")
+		change(t, operator, a.scope, &a.releaseID, 4, "ROLLBACK")
+		expectMap(t, get(t, synthetic, mapping), "ACTIVE", "PARTIAL_SOURCE_COVERAGE", a, 5)
+		expectMap(t, get(t, synthetic, oldPage), "ACTIVE", "PARTIAL_SOURCE_COVERAGE", a, 5)
+		expectDetail(t, get(t, synthetic, detail(uid(10), d.releaseID)), d, 4)
+		assertError(t, get(t, synthetic, detail(uid(10), b.releaseID)), 410, "RELEASE_WITHDRAWN")
+	})
+
+	t.Run("scope approval and source rights changes", func(t *testing.T) {
 		expectMap(t, get(t, synthetic, other), "ACTIVE", "PARTIAL_SOURCE_COVERAGE", c, 1)
 		execSQL(t, admin, "UPDATE sources.publication_scope SET reviewed_geom = public.ST_Multi(public.ST_MakeEnvelope(0,0,0.19,0.19,4326)) WHERE scope_key = $1", c.scope)
 		expectMap(t, get(t, synthetic, other), "NO_PUBLIC_RELEASE", "NO_PUBLIC_RELEASE", fixture{}, 1)
