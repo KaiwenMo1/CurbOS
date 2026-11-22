@@ -78,6 +78,9 @@ func prove(window Stay, active activeWindows, snapshot SyntheticSnapshot, permit
 	for i, fact := range snapshot.Unresolved {
 		if active[unresolvedWindow][i] && fact.Target == snapshot.Target {
 			unresolved = true
+			if fact.reason != "" {
+				addReason(fact.reason, fact.origin)
+			}
 			if fact.Kind != PotentialRestriction {
 				open[fact.Rule] = true
 			}
@@ -94,7 +97,7 @@ func prove(window Stay, active activeWindows, snapshot SyntheticSnapshot, permit
 		// Validation sorted rules by ID and required repeated IDs to agree.
 		// Their raw windows still count before evaluating one copy.
 		lastRule = rule.ID
-		result.RuleRefs = append(result.RuleRefs, RuleReference{ID: rule.ID, Evidence: rule.Evidence})
+		result.RuleRefs = append(result.RuleRefs, RuleReference{ID: rule.ID, Evidence: rule.Evidence, OriginalID: rule.origin})
 		result.EvidenceRefs = append(result.EvidenceRefs, rule.Evidence...)
 		switch {
 		case rule.Target != snapshot.Target:
@@ -113,6 +116,9 @@ func prove(window Stay, active activeWindows, snapshot SyntheticSnapshot, permit
 	for _, index := range restrictions {
 		rule := snapshot.Rules[index]
 		restrictionReason := ApplicableRestriction
+		if rule.violation != "" {
+			restrictionReason = rule.violation
+		}
 		if rule.Effect == PermitOnly {
 			match, found := permitMatches[rule.Permit]
 			if !found {

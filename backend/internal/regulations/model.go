@@ -94,6 +94,8 @@ type SyntheticRule struct {
 	Permit PermitKey
 	// SubjectTo names restrictions that this fixture permission yields to.
 	SubjectTo []RuleID
+	origin    RuleID
+	violation ReasonCode
 }
 
 // RestrictionAssumption supplies a synthetic premise about the absence of an
@@ -119,6 +121,8 @@ type UnresolvedFact struct {
 	Kind     UnresolvedKind
 	Rule     RuleID
 	Evidence []EvidenceRef
+	origin   RuleID
+	reason   ReasonCode
 }
 
 // SyntheticSnapshot contains test premises with fixture-local identifiers.
@@ -153,21 +157,26 @@ const NotAssessed DimensionStatus = "NOT_ASSESSED"
 type ReasonCode string
 
 const (
-	FullStayAuthorized    ReasonCode = "FULL_STAY_AUTHORIZED"
-	ApplicablePermission  ReasonCode = "APPLICABLE_PERMISSION"
-	ApplicableRestriction ReasonCode = "APPLICABLE_RESTRICTION"
-	PermitRequired        ReasonCode = "PERMIT_REQUIRED"
-	PermitUnverified      ReasonCode = "PERMIT_UNVERIFIED"
-	CoverageMissing       ReasonCode = "COVERAGE_MISSING"
-	PermissionMissing     ReasonCode = "PERMISSION_MISSING"
-	TargetUnresolved      ReasonCode = "TARGET_UNRESOLVED"
-	SideMismatch          ReasonCode = "SIDE_MISMATCH"
-	AuthorityConflict     ReasonCode = "AUTHORITY_CONFLICT"
-	InvalidTarget         ReasonCode = "INVALID_TARGET"
-	InvalidStayTime       ReasonCode = "INVALID_STAY_TIME"
-	StayLimitExceeded     ReasonCode = "STAY_LIMIT_EXCEEDED"
-	EvaluationLimit       ReasonCode = "EVALUATION_LIMIT"
-	SnapshotInvalid       ReasonCode = "SNAPSHOT_INVALID"
+	FullStayAuthorized     ReasonCode = "FULL_STAY_AUTHORIZED"
+	ApplicablePermission   ReasonCode = "APPLICABLE_PERMISSION"
+	ApplicableRestriction  ReasonCode = "APPLICABLE_RESTRICTION"
+	PermitRequired         ReasonCode = "PERMIT_REQUIRED"
+	PermitUnverified       ReasonCode = "PERMIT_UNVERIFIED"
+	CoverageMissing        ReasonCode = "COVERAGE_MISSING"
+	PermissionMissing      ReasonCode = "PERMISSION_MISSING"
+	TargetUnresolved       ReasonCode = "TARGET_UNRESOLVED"
+	SideMismatch           ReasonCode = "SIDE_MISMATCH"
+	AuthorityConflict      ReasonCode = "AUTHORITY_CONFLICT"
+	InvalidTarget          ReasonCode = "INVALID_TARGET"
+	InvalidStayTime        ReasonCode = "INVALID_STAY_TIME"
+	StayLimitExceeded      ReasonCode = "STAY_LIMIT_EXCEEDED"
+	EvaluationLimit        ReasonCode = "EVALUATION_LIMIT"
+	SnapshotInvalid        ReasonCode = "SNAPSHOT_INVALID"
+	JurisdictionUnresolved ReasonCode = "JURISDICTION_UNRESOLVED"
+	CalendarUnresolved     ReasonCode = "CALENDAR_UNRESOLVED"
+	UnsupportedRule        ReasonCode = "UNSUPPORTED_RULE"
+	MaxStayExceeded        ReasonCode = "MAX_STAY_EXCEEDED"
+	StayHistoryUnresolved  ReasonCode = "STAY_HISTORY_UNRESOLVED"
 )
 
 type Reason struct {
@@ -176,8 +185,9 @@ type Reason struct {
 }
 
 type RuleReference struct {
-	ID       RuleID
-	Evidence []EvidenceRef
+	ID         RuleID
+	Evidence   []EvidenceRef
+	OriginalID RuleID // Logical fixture ID for a normalized fragment.
 }
 
 type IntervalResult struct {
@@ -202,4 +212,7 @@ type Result struct {
 	Fit       DimensionStatus
 	Occupancy DimensionStatus
 	Arrival   DimensionStatus
+	// CalendarEvidence is set by EvaluateCivil when a resolved exception
+	// suppresses a scheduled restriction over a permitted part of the stay.
+	CalendarEvidence *CalendarEvidence
 }
