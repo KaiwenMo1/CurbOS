@@ -212,4 +212,7 @@ type Result struct {
 	Fit       DimensionStatus
 	Occupancy DimensionStatus
 	Arrival   DimensionStatus
+	// CalendarEvidence is set by EvaluateCivil when a resolved exception
+	// suppresses a scheduled restriction over a permitted part of the stay.
+	CalendarEvidence *CalendarEvidence
 }

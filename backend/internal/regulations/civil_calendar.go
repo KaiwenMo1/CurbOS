@@ -2,6 +2,7 @@ package regulations
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/sha256"
 	"encoding/json"
 	"slices"
@@ -50,6 +51,36 @@ type CalendarException struct {
 	When      DayCondition
 	Clock     LocalWindow
 	Evidence  []EvidenceRef
+}
+
+// CalendarEvidence identifies the pinned synthetic calendar and scoped
+// restriction exclusions that overlap a permitted interval. These records
+// describe synthetic fixture transformations. A permit could independently
+// satisfy a suppressed permit restriction.
+type CalendarEvidence struct {
+	Pin        CalendarPin
+	Exclusions []CalendarExclusion
+}
+
+type CalendarExclusion struct {
+	Use CalendarUse
+	// Window is the exact UTC portion removed from the rule within the stay.
+	// Intersect it with a permitted interval to locate the affected proof.
+	Window       Stay
+	EvidenceRefs []EvidenceRef
+}
+
+func compareCalendarExclusions(a, b CalendarExclusion) int {
+	if order := cmp.Compare(a.Use.Rule, b.Use.Rule); order != 0 {
+		return order
+	}
+	if order := a.Use.Date.midnight().Compare(b.Use.Date.midnight()); order != 0 {
+		return order
+	}
+	if order := a.Window.Start.Compare(b.Window.Start); order != 0 {
+		return order
+	}
+	return a.Window.End.Compare(b.Window.End)
 }
 
 type SyntheticCalendar struct {
@@ -158,6 +189,7 @@ func exceptionWindow(date time.Time, clock LocalWindow) (Stay, bool) {
 
 type calendarResolution struct {
 	windows   []Stay
+	excluded  []Stay
 	evidence  []EvidenceRef
 	reason    ReasonCode
 	operation CalendarOperation
@@ -231,34 +263,36 @@ func (c fixtureCalendar) resolve(rule RuleID, schedule CivilSchedule, day time.T
 	if !applies {
 		base = nil
 	}
+	var excluded []Stay
 	switch chosen.Operation {
 	case CalendarAdd:
 		window, _ := exceptionWindow(day, chosen.Clock)
 		base = append(base, window)
 	case CalendarRemove:
 		window, _ := exceptionWindow(day, chosen.Clock)
-		base = removeWindow(base, window)
+		base, excluded = splitWindow(base, window)
 	case CalendarReplace:
 		window, _ := exceptionWindow(day, chosen.Clock)
+		excluded, _ = splitWindow(base, window)
 		base = []Stay{window}
 	}
-	return calendarResolution{windows: base, evidence: refs, operation: chosen.Operation}
+	return calendarResolution{windows: base, excluded: excluded, evidence: refs, operation: chosen.Operation}
 }
 
-func removeWindow(windows []Stay, remove Stay) []Stay {
-	var retained []Stay
+func splitWindow(windows []Stay, selected Stay) (outside, inside []Stay) {
 	for _, window := range windows {
-		overlap := intersection(window, remove)
+		overlap := intersection(window, selected)
 		if !overlap.Start.Before(overlap.End) {
-			retained = append(retained, window)
+			outside = append(outside, window)
 			continue
 		}
+		inside = append(inside, overlap)
 		if window.Start.Before(overlap.Start) {
-			retained = append(retained, Stay{window.Start, overlap.Start})
+			outside = append(outside, Stay{window.Start, overlap.Start})
 		}
 		if overlap.End.Before(window.End) {
-			retained = append(retained, Stay{overlap.End, window.End})
+			outside = append(outside, Stay{overlap.End, window.End})
 		}
 	}
-	return retained
+	return outside, inside
 }

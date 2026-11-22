@@ -301,6 +301,16 @@ func TestT24CalendarExceptions(t *testing.T) {
 			got := EvaluateCivil(input, fixture)
 			assertResult(t, got, Complete, tc.legal)
 			assertPartition(t, got, tc.stay)
+			switch tc.op {
+			case CalendarRemove:
+				assertCalendarExclusion(t, got, fixture, tc.stay, CalendarRemove)
+			case CalendarReplace:
+				assertCalendarExclusion(t, got, fixture, window(15, 15, 15, 30), CalendarReplace)
+			case CalendarAdd:
+				if got.CalendarEvidence != nil {
+					t.Fatal("calendar addition was cited as a restriction exclusion")
+				}
+			}
 			if tc.legal == Prohibited {
 				assertEvidence(t, got.Intervals[len(got.Intervals)-1], "fixture-holiday-exception")
 			}
@@ -332,13 +342,20 @@ func TestT24CalendarExceptions(t *testing.T) {
 			assertResult(t, got, Complete, Unknown, CalendarUnresolved)
 			assertIntervals(t, got, intervalWant{input.Stay, Unknown})
 			assertEvidence(t, got.Intervals[0], "fixture-civil-rule", "fixture-holiday-exception")
+			if got.CalendarEvidence != nil {
+				t.Fatal("unresolved calendar produced exclusion evidence")
+			}
 		})
 	}
 
 	t.Run("integrity mismatch", func(t *testing.T) {
 		input, fixture := holidayFixture(window(15, 15, 15, 45), CalendarRemove, LocalWindow{AllDay: true})
 		fixture.Calendar.Days[0].Membership = OrdinaryDay
-		assertResult(t, EvaluateCivil(input, fixture), Failed, Unknown, SnapshotInvalid)
+		got := EvaluateCivil(input, fixture)
+		assertResult(t, got, Failed, Unknown, SnapshotInvalid)
+		if got.CalendarEvidence != nil || len(got.Intervals) != 0 {
+			t.Fatal("invalid pin produced partial proof")
+		}
 	})
 
 	t.Run("date exception on overnight continuation", func(t *testing.T) {
@@ -353,6 +370,57 @@ func TestT24CalendarExceptions(t *testing.T) {
 		got := EvaluateCivil(input, fixture)
 		assertResult(t, got, Complete, Prohibited, ApplicableRestriction)
 		assertIntervals(t, got, intervalWant{Stay{stay.Start, midnight}, Prohibited}, intervalWant{Stay{midnight, stay.End}, Permitted})
+	})
+}
+
+func assertCalendarExclusion(t *testing.T, got Result, fixture CivilSnapshot, window Stay, operation CalendarOperation) {
+	t.Helper()
+	want := &CalendarEvidence{Pin: fixture.Calendar.Pin, Exclusions: []CalendarExclusion{{
+		Use: CalendarUse{"civil-ban", CivilDate{2026, 1, 20}, operation}, Window: window,
+		EvidenceRefs: []EvidenceRef{"fixture-holiday-exception"},
+	}}}
+	if !reflect.DeepEqual(got.CalendarEvidence, want) {
+		t.Fatalf("calendar evidence = %+v, want %+v", got.CalendarEvidence, want)
+	}
+}
+
+func TestCalendarExclusionProvenance(t *testing.T) {
+	stay := Stay{civilAt(2026, 1, 20, 15, 15), civilAt(2026, 1, 20, 15, 30)}
+	t.Run("replacement enables full stay", func(t *testing.T) {
+		input, fixture := holidayFixture(stay, CalendarReplace, LocalWindow{Start: civilClock(10, 30), End: civilClock(11, 30)})
+		calendar := fixture.Calendar
+		calendar.Exceptions = append(calendar.Exceptions, calendar.Exceptions[0])
+		attachCalendar(&fixture, *calendar)
+		fixture.Rules = append(fixture.Rules, fixture.Rules[0])
+		got := EvaluateCivil(input, fixture)
+		assertResult(t, got, Complete, Permitted, FullStayAuthorized)
+		assertIntervals(t, got, intervalWant{stay, Permitted})
+		assertCalendarExclusion(t, got, fixture, stay, CalendarReplace)
+
+		attachCalendar(&fixture, SyntheticCalendar{Days: calendar.Days})
+		got = EvaluateCivil(input, fixture)
+		assertResult(t, got, Complete, Prohibited, ApplicableRestriction)
+		if got.CalendarEvidence != nil {
+			t.Fatal("calendar with no exceptions produced exclusion evidence")
+		}
+	})
+	t.Run("same-date removal outside the stay", func(t *testing.T) {
+		stay := Stay{civilAt(2026, 1, 20, 16, 0), civilAt(2026, 1, 20, 16, 30)}
+		input, fixture := holidayFixture(stay, CalendarRemove, LocalWindow{Start: civilClock(10, 30), End: civilClock(11, 0)})
+		got := EvaluateCivil(input, fixture)
+		assertResult(t, got, Complete, Permitted, FullStayAuthorized)
+		if got.CalendarEvidence != nil {
+			t.Fatal("out-of-stay exclusion was cited")
+		}
+	})
+	t.Run("missing independent permission", func(t *testing.T) {
+		input, fixture := holidayFixture(stay, CalendarRemove, LocalWindow{AllDay: true})
+		fixture.Absolute.Rules = nil
+		got := EvaluateCivil(input, fixture)
+		assertResult(t, got, Complete, Unknown, PermissionMissing)
+		if got.CalendarEvidence != nil {
+			t.Fatal("exclusion was cited as proof without permission")
+		}
 	})
 }
 

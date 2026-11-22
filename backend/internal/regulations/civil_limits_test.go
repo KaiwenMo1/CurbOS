@@ -283,6 +283,23 @@ func TestT55CivilAdmissionBudgets(t *testing.T) {
 	})
 }
 
+func TestCalendarExclusionWindowBudget(t *testing.T) {
+	stay := Stay{civilAt(2026, 1, 20, 15, 15), civilAt(2026, 1, 20, 15, 30)}
+	input, fixture := holidayFixture(stay, CalendarRemove, LocalWindow{AllDay: true})
+	fixture.Absolute.Restrictions = nil
+	fixture.Absolute.Coverage = slices.Repeat(fixture.Absolute.Coverage, maxWindows-2)
+	got := EvaluateCivil(input, fixture)
+	assertResult(t, got, Complete, Permitted, FullStayAuthorized)
+	assertCalendarExclusion(t, got, fixture, stay, CalendarRemove)
+
+	fixture.Absolute.Coverage = append(fixture.Absolute.Coverage, fixture.Absolute.Coverage[0])
+	got = EvaluateCivil(input, fixture)
+	assertResult(t, got, Failed, Unknown, EvaluationLimit)
+	if got.CalendarEvidence != nil || len(got.Intervals) != 0 {
+		t.Fatal("exhausted calendar exclusion budget produced partial proof")
+	}
+}
+
 func TestT57AbsolutePathRegression(t *testing.T) {
 	input, snapshot := permitFixture()
 	input.Permits.Facts[0].Validity.End = instant(60)
@@ -290,6 +307,9 @@ func TestT57AbsolutePathRegression(t *testing.T) {
 	snapshot.Coverage[0].Window.End = instant(70)
 	direct := Evaluate(input, snapshot)
 	assertResult(t, direct, Complete, Prohibited, PermitRequired, ApplicableRestriction, CoverageMissing)
+	if direct.CalendarEvidence != nil {
+		t.Fatal("absolute evaluation supplied calendar evidence")
+	}
 	if wrapped := EvaluateCivil(input, CivilSnapshot{Absolute: snapshot}); !reflect.DeepEqual(wrapped, direct) {
 		t.Fatal("civil adapter altered the absolute proof")
 	}

@@ -61,6 +61,8 @@ type CivilNormalization struct {
 	// AppliedCalendar identifies the scoped records in the pinned calendar
 	// even when a removal leaves no normalized rule to carry their evidence.
 	AppliedCalendar []CalendarUse
+
+	calendarExclusions []CalendarExclusion
 }
 
 type CalendarUse struct {
@@ -181,7 +183,13 @@ func NormalizeCivil(input EvaluationInput, fixture CivilSnapshot) (CivilNormaliz
 				if calendarUses == nil {
 					calendarUses = make(map[calendarKey]CalendarUse)
 				}
-				calendarUses[calendarKey{rule.ID, date}] = CalendarUse{rule.ID, date, resolution.operation}
+				use := CalendarUse{rule.ID, date, resolution.operation}
+				calendarUses[calendarKey{rule.ID, date}] = use
+				if rule.Target == fixture.Absolute.Target && rule.Effect != Permission {
+					if !out.addCalendarExclusions(use, resolution, spans) {
+						return CivilNormalization{}, EvaluationLimit
+					}
+				}
 			}
 			for _, piece := range resolution.windows {
 				for _, span := range spans {
@@ -260,7 +268,14 @@ func NormalizeCivil(input EvaluationInput, fixture CivilSnapshot) (CivilNormaliz
 		}
 		return a.Date.midnight().Compare(b.Date.midnight())
 	})
-	return CivilNormalization{Snapshot: snapshot, Timezone: timezone, Calendar: calendar.pin, AppliedCalendar: uses}, ""
+	slices.SortFunc(out.calendarExclusions, compareCalendarExclusions)
+	exclusions := slices.CompactFunc(out.calendarExclusions, func(a, b CalendarExclusion) bool {
+		return compareCalendarExclusions(a, b) == 0
+	})
+	return CivilNormalization{
+		Snapshot: snapshot, Timezone: timezone, Calendar: calendar.pin,
+		AppliedCalendar: uses, calendarExclusions: exclusions,
+	}, ""
 }
 
 // EvaluateCivil delegates all legal decisions to the absolute evaluator.
@@ -272,7 +287,18 @@ func EvaluateCivil(input EvaluationInput, fixture CivilSnapshot) Result {
 	normalized, reason := NormalizeCivil(input, fixture)
 	switch reason {
 	case "":
-		return Evaluate(input, normalized.Snapshot)
+		result := Evaluate(input, normalized.Snapshot)
+		for _, exclusion := range normalized.calendarExclusions {
+			if slices.ContainsFunc(result.Intervals, func(interval IntervalResult) bool {
+				return interval.Legal == Permitted && intersection(interval.Window, exclusion.Window).valid()
+			}) {
+				if result.CalendarEvidence == nil {
+					result.CalendarEvidence = &CalendarEvidence{Pin: normalized.Calendar}
+				}
+				result.CalendarEvidence.Exclusions = append(result.CalendarEvidence.Exclusions, exclusion)
+			}
+		}
+		return result
 	case JurisdictionUnresolved:
 		result := newResult(Complete, reason)
 		result.Intervals = []IntervalResult{{
@@ -374,9 +400,10 @@ func equalAnchor(a, b *time.Time) bool {
 }
 
 type civilOutput struct {
-	snapshot  SyntheticSnapshot
-	budget    workBudget
-	fragments map[RuleID]map[RuleID]Stay
+	snapshot           SyntheticSnapshot
+	budget             workBudget
+	fragments          map[RuleID]map[RuleID]Stay
+	calendarExclusions []CalendarExclusion
 }
 
 func newCivilOutput(input EvaluationInput, absolute SyntheticSnapshot, expanded map[RuleID]bool) civilOutput {
@@ -395,10 +422,28 @@ func newCivilOutput(input EvaluationInput, absolute SyntheticSnapshot, expanded 
 	}
 	// The base is a subset of the preflighted absolute collections.
 	budget, _ := remainingBudget(input, base)
-	// Generated pieces are staged directly in the final window collections.
-	// Their shared window allowance also bounds pending normalized windows.
+	// Generated windows, including calendar exclusions carried only as
+	// evidence, share the intermediate allowance.
 	budget.windows = min(budget.windows, maxIntermediateWindows)
-	return civilOutput{base, budget, make(map[RuleID]map[RuleID]Stay)}
+	return civilOutput{snapshot: base, budget: budget, fragments: make(map[RuleID]map[RuleID]Stay)}
+}
+
+func (out *civilOutput) addCalendarExclusions(use CalendarUse, resolution calendarResolution, spans []offsetSpan) bool {
+	for _, piece := range resolution.excluded {
+		for _, span := range spans {
+			window, exists := project(piece, span)
+			if !exists {
+				continue
+			}
+			if !out.budget.take(1, 0, len(resolution.evidence)) {
+				return false
+			}
+			out.calendarExclusions = append(out.calendarExclusions, CalendarExclusion{
+				Use: use, Window: window, EvidenceRefs: canonical(slices.Clone(resolution.evidence)),
+			})
+		}
+	}
+	return true
 }
 
 func (out *civilOutput) addGap(target SyntheticTarget, window Stay, id RuleID, effect RuleEffect, reason ReasonCode, evidence, extra []EvidenceRef) bool {
