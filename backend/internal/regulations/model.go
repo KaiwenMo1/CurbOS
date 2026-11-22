@@ -1,4 +1,7 @@
 // Package regulations evaluates synthetic parking fixtures over absolute stays.
+// PR-01 evaluates the fixture's target and permit conditions.
+// Vehicle-class-specific legal eligibility requires PR-03 applicability checks
+// and independently verified conditions.
 package regulations
 
 import "time"
@@ -178,10 +181,15 @@ type RuleReference struct {
 }
 
 type IntervalResult struct {
-	Window       Stay
-	Legal        LegalOutcome
-	Reasons      []Reason
-	RuleRefs     []RuleReference
+	Window   Stay
+	Legal    LegalOutcome
+	Reasons  []Reason
+	RuleRefs []RuleReference
+	// EvidenceRefs is a sorted, deduplicated union across the interval's
+	// checks. For permits, it cites active verified matches for satisfaction,
+	// complete inventory for absence, or compatible active unknown facts and
+	// any incomplete inventory evidence for uncertainty. Per-check attribution
+	// and a trace of discarded facts are outside this flat result.
 	EvidenceRefs []EvidenceRef
 }
 

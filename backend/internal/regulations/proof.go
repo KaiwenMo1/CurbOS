@@ -13,31 +13,48 @@ const (
 	permitSatisfied
 )
 
-func matchPermit(key PermitKey, inventory PermitInventory, active []bool) permitMatch {
-	uncertain := inventory.State != InventoryComplete
+func couldMatchPermit(key, candidate PermitKey) bool {
+	return (candidate.Class == "" || candidate.Class == key.Class) &&
+		(candidate.Scope == "" || candidate.Scope == key.Scope) &&
+		(candidate.Issuer == "" || candidate.Issuer == key.Issuer)
+}
+
+// Mark facts used by this check. A satisfied requirement makes any unknown
+// alternatives immaterial. The caller combines marks across permit keys.
+func matchPermit(key PermitKey, inventory PermitInventory, active, cited []bool) permitMatch {
+	var satisfied, possible bool
 	for i, fact := range inventory.Facts {
 		if !active[i] {
 			continue
 		}
 		if fact.State == PermitVerified {
 			if fact.Key == key {
-				return permitSatisfied
+				cited[i] = true
+				satisfied = true
 			}
 			continue
 		}
-		if (fact.Key.Class == "" || fact.Key.Class == key.Class) &&
-			(fact.Key.Scope == "" || fact.Key.Scope == key.Scope) &&
-			(fact.Key.Issuer == "" || fact.Key.Issuer == key.Issuer) {
-			uncertain = true
+		if couldMatchPermit(key, fact.Key) {
+			possible = true
 		}
 	}
-	if uncertain {
+	if satisfied {
+		return permitSatisfied
+	}
+	if possible {
+		for i, fact := range inventory.Facts {
+			if active[i] && fact.State == PermitUnknown && couldMatchPermit(key, fact.Key) {
+				cited[i] = true
+			}
+		}
+	}
+	if possible || inventory.State != InventoryComplete {
 		return permitUncertain
 	}
 	return permitMissing
 }
 
-func prove(window Stay, active activeWindows, snapshot SyntheticSnapshot, permits PermitInventory, permitRefs []EvidenceRef) IntervalResult {
+func prove(window Stay, active activeWindows, snapshot SyntheticSnapshot, permits PermitInventory) IntervalResult {
 	result := IntervalResult{Window: window, Legal: Unknown}
 	addReason := func(code ReasonCode, id RuleID) {
 		result.Reasons = append(result.Reasons, Reason{Code: code, Rule: id})
@@ -91,6 +108,8 @@ func prove(window Stay, active activeWindows, snapshot SyntheticSnapshot, permit
 
 	blockedPermission := unresolved
 	permitMatches := make(map[PermitKey]permitMatch)
+	var citedPermits []bool
+	citeInventory := false
 	for _, index := range restrictions {
 		rule := snapshot.Rules[index]
 		restrictionReason := ApplicableRestriction
@@ -98,10 +117,13 @@ func prove(window Stay, active activeWindows, snapshot SyntheticSnapshot, permit
 			match, found := permitMatches[rule.Permit]
 			if !found {
 				if len(permitMatches) == 0 {
-					result.EvidenceRefs = append(result.EvidenceRefs, permitRefs...)
+					citedPermits = make([]bool, len(permits.Facts))
 				}
-				match = matchPermit(rule.Permit, permits, active[permitWindow])
+				match = matchPermit(rule.Permit, permits, active[permitWindow], citedPermits)
 				permitMatches[rule.Permit] = match
+				if match == permitMissing || (match == permitUncertain && permits.State == InventoryUnknown) {
+					citeInventory = true
+				}
 			}
 			if match == permitSatisfied {
 				continue
@@ -132,6 +154,14 @@ func prove(window Stay, active activeWindows, snapshot SyntheticSnapshot, permit
 		}
 		addReason(restrictionReason, rule.ID)
 		result.Legal = Prohibited
+	}
+	if citeInventory {
+		result.EvidenceRefs = append(result.EvidenceRefs, permits.Evidence...)
+	}
+	for i, cited := range citedPermits {
+		if cited {
+			result.EvidenceRefs = append(result.EvidenceRefs, permits.Facts[i].Evidence...)
+		}
 	}
 
 	if !covered || unresolved {

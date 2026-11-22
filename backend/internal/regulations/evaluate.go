@@ -158,12 +158,6 @@ func sweep(events []event, boundaries int, snapshot SyntheticSnapshot, permits P
 		unresolvedWindow: make([]bool, len(snapshot.Unresolved)),
 		permitWindow:     make([]bool, len(permits.Facts)),
 	}
-	permitRefs := slices.Clone(permits.Evidence)
-	for _, fact := range permits.Facts {
-		permitRefs = append(permitRefs, fact.Evidence...)
-	}
-	permitRefs = canonical(permitRefs)
-
 	result := newResult(Complete)
 	result.Legal = Permitted
 	result.Intervals = make([]IntervalResult, 0, boundaries-1)
@@ -180,7 +174,7 @@ func sweep(events []event, boundaries int, snapshot SyntheticSnapshot, permits P
 		if i == len(events) {
 			break
 		}
-		interval := prove(Stay{Start: at, End: events[i].at}, active, snapshot, permits, permitRefs)
+		interval := prove(Stay{Start: at, End: events[i].at}, active, snapshot, permits)
 		result.Intervals = append(result.Intervals, interval)
 		for _, reason := range interval.Reasons {
 			reasonSet[reason.Code] = struct{}{}

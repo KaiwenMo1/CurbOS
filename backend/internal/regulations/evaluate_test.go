@@ -292,14 +292,68 @@ func TestPermitMatrix(t *testing.T) {
 			assertIntervals(t, got, tc.wants...)
 			for _, interval := range got.Intervals {
 				assertEvidence(t, interval, "fixture-rule-permit-only")
-				if input.Permits.State == InventoryComplete {
+				if interval.Legal == Prohibited {
 					assertEvidence(t, interval, "fixture-inventory")
-				}
-				if len(input.Permits.Facts) > 0 {
-					assertEvidence(t, interval, "fixture-permit")
 				}
 			}
 		})
+	}
+}
+
+func TestPermitEvidenceUsesActiveMatchingFacts(t *testing.T) {
+	input, snapshot := permitFixture()
+	input.Permits.Facts[0].Validity.End = instant(60)
+	matchingKey := input.Permits.Facts[0].Key
+	wrongScope := matchingKey
+	wrongScope.Scope = "fixture-other-zone"
+	inactiveWindow, activeWindow := span(100, 120), input.Stay
+	input.Permits.Facts = append(input.Permits.Facts,
+		PermitFact{Key: matchingKey, State: PermitVerified, Validity: &inactiveWindow, Evidence: []EvidenceRef{"fixture-inactive-permit"}},
+		PermitFact{Key: wrongScope, State: PermitVerified, Validity: &activeWindow, Evidence: []EvidenceRef{"fixture-wrong-scope"}},
+		PermitFact{Key: matchingKey, State: PermitVerified, Validity: input.Permits.Facts[0].Validity, Evidence: []EvidenceRef{"fixture-second-match"}},
+		PermitFact{Key: matchingKey, State: PermitUnknown, Validity: input.Permits.Facts[0].Validity, Evidence: []EvidenceRef{"fixture-unknown-alternative"}},
+	)
+
+	got := Evaluate(input, snapshot)
+	assertResult(t, got, Complete, Prohibited, PermitRequired)
+	assertIntervals(t, got, want(30, 60, Permitted), want(60, 90, Prohibited))
+	for i, want := range [][]EvidenceRef{
+		{"fixture-complete-coverage", "fixture-permission", "fixture-permit", "fixture-rule-permit-only", "fixture-second-match"},
+		{"fixture-assumption-permit-only", "fixture-complete-coverage", "fixture-inventory", "fixture-permission", "fixture-rule-permit-only"},
+	} {
+		if !slices.Equal(got.Intervals[i].EvidenceRefs, want) {
+			t.Errorf("interval %d evidence = %v, want %v", i, got.Intervals[i].EvidenceRefs, want)
+		}
+	}
+
+	slices.Reverse(input.Permits.Facts)
+	if reordered := Evaluate(input, snapshot); !reflect.DeepEqual(got, reordered) {
+		t.Fatal("permit order changed the outcome or evidence")
+	}
+}
+
+func TestPermitEvidenceExplainsUncertainty(t *testing.T) {
+	for _, state := range []PermitInventoryState{InventoryComplete, InventoryUnknown} {
+		input, snapshot := permitFixture()
+		input.Permits.State = state
+		candidate := &input.Permits.Facts[0]
+		candidate.State, candidate.Validity = PermitUnknown, nil
+		candidate.Key.Scope = ""
+		unrelated := *candidate
+		unrelated.Key.Class = "fixture-other-class"
+		unrelated.Evidence = []EvidenceRef{"fixture-unrelated-unknown"}
+		input.Permits.Facts = append(input.Permits.Facts, unrelated)
+
+		got := Evaluate(input, snapshot)
+		assertResult(t, got, Complete, Unknown, PermitUnverified)
+		assertIntervals(t, got, want(30, 90, Unknown))
+		want := []EvidenceRef{"fixture-complete-coverage", "fixture-permission", "fixture-permit", "fixture-rule-permit-only"}
+		if state == InventoryUnknown {
+			want = slices.Insert(want, 1, "fixture-inventory")
+		}
+		if !slices.Equal(got.Intervals[0].EvidenceRefs, want) {
+			t.Errorf("inventory state %d evidence = %v, want %v", state, got.Intervals[0].EvidenceRefs, want)
+		}
 	}
 }
 
