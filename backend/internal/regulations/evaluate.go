@@ -50,19 +50,9 @@ func Evaluate(input EvaluationInput, snapshot SyntheticSnapshot) Result {
 	if !ok {
 		return newResult(Failed, SnapshotInvalid)
 	}
-	events, ok := collectEvents(stay, snapshot, input.Permits, windows)
+	events, boundaries, ok := prepareEvents(stay, snapshot, input.Permits, windows)
 	if !ok {
 		return newResult(Failed, EvaluationLimit)
-	}
-	slices.SortFunc(events, compareEvents)
-	boundaries := 1
-	for i := 1; i < len(events); i++ {
-		if events[i].at != events[i-1].at {
-			boundaries++
-			if boundaries > maxBoundaries {
-				return newResult(Failed, EvaluationLimit)
-			}
-		}
 	}
 
 	if input.Target.Side > SideRight {
@@ -76,6 +66,24 @@ func Evaluate(input EvaluationInput, snapshot SyntheticSnapshot) Result {
 		return result
 	}
 	return sweep(events, boundaries, snapshot, input.Permits)
+}
+
+func prepareEvents(stay Stay, snapshot SyntheticSnapshot, permits PermitInventory, windows int) ([]event, int, bool) {
+	events, ok := collectEvents(stay, snapshot, permits, windows)
+	if !ok {
+		return nil, 0, false
+	}
+	slices.SortFunc(events, compareEvents)
+	boundaries := 1
+	for i := 1; i < len(events); i++ {
+		if events[i].at != events[i-1].at {
+			boundaries++
+			if boundaries > maxBoundaries {
+				return nil, 0, false
+			}
+		}
+	}
+	return events, boundaries, true
 }
 
 func collectEvents(stay Stay, snapshot SyntheticSnapshot, permits PermitInventory, windows int) ([]event, bool) {

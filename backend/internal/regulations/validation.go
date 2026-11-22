@@ -15,57 +15,74 @@ const (
 	maxEndpoints  = 2*maxWindows + 2
 )
 
-// preflight counts the original collections, including disjoint windows,
+type workBudget struct {
+	windows, rules, references int
+}
+
+func (b *workBudget) take(windows, rules, references int) bool {
+	if windows > b.windows || rules > b.rules || references > b.references {
+		return false
+	}
+	b.windows -= windows
+	b.rules -= rules
+	b.references -= references
+	return true
+}
+
+// remainingBudget counts the original collections, including disjoint windows,
 // duplicates and implicit whole-stay facts, before allocating sweep storage.
-func preflight(input EvaluationInput, snapshot SyntheticSnapshot) (int, bool) {
-	remaining := maxWindows
+func remainingBudget(input EvaluationInput, snapshot SyntheticSnapshot) (workBudget, bool) {
+	budget := workBudget{maxWindows, maxRules, maxReferences}
 	for _, n := range [...]int{
 		len(snapshot.Rules), len(snapshot.Coverage), len(snapshot.Restrictions),
 		len(snapshot.Unresolved), len(input.Permits.Facts),
 	} {
-		if n > remaining {
-			return 0, false
+		if !budget.take(n, 0, 0) {
+			return workBudget{}, false
 		}
-		remaining -= n
 	}
-	if len(snapshot.Rules) > maxRules {
-		return 0, false
+	if !budget.take(0, len(snapshot.Rules), 0) {
+		return workBudget{}, false
 	}
 
-	references := maxReferences
 	count := func(refs []EvidenceRef) bool {
-		if len(refs) > references {
-			return false
-		}
-		references -= len(refs)
-		return true
+		return budget.take(0, 0, len(refs))
 	}
 	for _, rule := range snapshot.Rules {
 		if !count(rule.Evidence) {
-			return 0, false
+			return workBudget{}, false
 		}
 	}
 	for _, coverage := range snapshot.Coverage {
 		if !count(coverage.Evidence) {
-			return 0, false
+			return workBudget{}, false
 		}
 	}
 	for _, assumption := range snapshot.Restrictions {
 		if !count(assumption.Evidence) {
-			return 0, false
+			return workBudget{}, false
 		}
 	}
 	for _, fact := range snapshot.Unresolved {
 		if !count(fact.Evidence) {
-			return 0, false
+			return workBudget{}, false
 		}
 	}
 	for _, permit := range input.Permits.Facts {
 		if !count(permit.Evidence) {
-			return 0, false
+			return workBudget{}, false
 		}
 	}
-	return maxWindows - remaining, count(input.Permits.Evidence)
+	ok := count(input.Permits.Evidence)
+	return budget, ok
+}
+
+func preflight(input EvaluationInput, snapshot SyntheticSnapshot) (int, bool) {
+	budget, ok := remainingBudget(input, snapshot)
+	if !ok {
+		return 0, false
+	}
+	return maxWindows - budget.windows, true
 }
 
 func (w Stay) utc() Stay {
@@ -143,6 +160,7 @@ func validateSnapshot(snapshot SyntheticSnapshot, permits PermitInventory) (Synt
 		if prior, exists := byID[rule.ID]; exists &&
 			(prior.Window != rule.Window || prior.Target != rule.Target ||
 				prior.Effect != rule.Effect || prior.Permit != rule.Permit ||
+				prior.origin != rule.origin || prior.violation != rule.violation ||
 				!slices.Equal(prior.SubjectTo, rule.SubjectTo) || !slices.Equal(prior.Evidence, rule.Evidence)) {
 			return SyntheticSnapshot{}, false
 		}
