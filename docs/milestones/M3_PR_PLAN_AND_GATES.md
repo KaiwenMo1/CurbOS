@@ -13,12 +13,12 @@
 
 ## PR-02 — Civil schedules, exceptions and maximum stay
 
-- **Objective and code area.** Extend `backend/internal/regulations` and its package-local fixtures for versioned civil schedules, pinned timezone input, holiday and seasonal exceptions and continuous maximum stays. Expand to exact UTC events for the Minimal Core.
-- **Prerequisite.** Merged PR-01 and a decision under D1 on timezone, calendar, fold/gap and continuous-cap behavior.
+- **Objective and code area.** Extend `backend/internal/regulations` and its package-local fixtures with the M3-02D normalizer. It projects explicitly pinned civil inputs and supported continuous elapsed caps to bounded absolute windows for the merged PR-01 evaluator.
+- **Prerequisite.** PR-01 is merged. D1-A–E fix the synthetic semantics and D1-F requires bounded normalization. The candidate ceilings need explicit approval or revision. Coding requires separate explicit authorization. [Civil-time contract](M3_RULE_EVALUATION_CONTRACT.md#pr-02-civil-time-design)
 - **Non-goals.** Live feeds, real jurisdiction datasets, textual request parsing, permit evidence verification, inferred prior dwell or a re-parking engine.
-- **Tests and evidence gate.** T21–T29, T31–T33 and T37. Assert exact UTC boundaries for both folds, spring gaps and length at the continuous cap. Bound civil expansion before passing events to the core. Retain PR-01 budget tests. The future RFC 3339 transport/parser contract requires separate authorization.
-- **Risk and rollback.** Wrong weekday after midnight, normalization that bridges a fold, and wall-clock durations substituted for elapsed duration. Revert the added schedule behavior and retain the absolute contract.
-- **Done when** tests are reproducible across host timezones using the same fixture data, including holiday uncertainty and unsupported accumulation, and `make check` passes.
+- **Tests and evidence gate.** T21–T29, T31–T33, T37 and T55–T57. Assert exact UTC partitions, explicit timezone error states, holiday uncertainty, the cap's expiration and one-nanosecond overrun, expansion at the limit and failure at limit plus one, and host-independent output. Count generated records against the existing core budgets and rerun the full PR-01 matrix. The future RFC 3339 transport/parser contract requires separate authorization.
+- **Risk and rollback.** Wrong weekday after midnight, a bridged fold, an assumed occupancy start, and expansion that hides budget exhaustion can change a legal proof. Revert the civil normalization slice to retain the absolute evaluator.
+- **Done when** the approved limits, exact projections and fail-closed semantics pass the synthetic acceptance matrix and `make check`. Existing M2 real-source and publication gates apply.
 
 ## PR-03 — Reviewed applicability, evidence and authority profiles
 

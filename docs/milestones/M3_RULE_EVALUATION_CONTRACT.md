@@ -1,6 +1,6 @@
 # M3 internal rule evaluation contract
 
-**Reconciled design.** The M3-00D decisions fix the Minimal Core scope and interval contract. The broader type sketches describe later slices. All rule examples and fixtures are synthetic. [Design specification and decision register](M3_DESIGN_SPEC.md)
+**Reconciled design.** M3-00D fixes the Minimal Core scope and interval contract. M3-02D freezes the synthetic civil-time semantics for PR-02. The broader type sketches describe later slices. All rule examples and fixtures are synthetic. [Design specification and decision register](M3_DESIGN_SPEC.md)
 
 ## Typed domain boundary
 
@@ -178,21 +178,61 @@ These are synthetic work limits, with no measured performance claim. Exceeding a
 
 ### PR-02 civil-time design
 
-The civil-time rules below are proposed design for PR-02. Jurisdiction-specific legal interpretation needs a reviewed profile.
+PR-02 normalizes supported synthetic civil inputs to absolute UTC half-open windows before the existing PR-01 evaluator. The exact-event sweep, whole-stay aggregation, absolute input budgets and legal proof requirements apply to the normalized inputs. RFC 3339 parsing remains a separate transport decision.
 
-| Case | Proposed behavior |
+#### D1-A — Pinned timezone and binding
+
+Each civil evaluation supplies an explicit jurisdiction-to-timezone binding, the exact IANA timezone ID, timezone-data version and content digest, and the immutable bytes for that zone. Check the digest and the pinned association between jurisdiction, ID, version and bytes. A loader accepting bytes under a supplied name does not establish that association. Use Go's `time.LoadLocationFromTZData` with the checked bytes where suitable. Derive local labels and offsets from that location only. Host tzdata, `time.Local`, process environment variables and inferred offsets are outside the input contract.
+
+| Timezone input state | Result |
 |---|---|
-| Jurisdiction time | Require a reviewed binding to an IANA timezone name and pinned tzdata bytes/version. Derive civil time from each instant under that location. A request offset specifies an instant and cannot set the legal timezone. An unresolved jurisdiction or timezone yields `UNKNOWN` with `JURISDICTION_UNRESOLVED`. An identified timezone with missing or corrupt pinned data fails with `SNAPSHOT_INVALID`. |
-| Weekly schedules | Expand by local calendar day and numeric day-of-week. Week boundaries do not reset the stay. A rule defined as starting Monday at 22:00 and ending at 06:00 applies from Monday night through Tuesday morning. Normalize an overnight window into a same-day part and a next-day continuation, also across Sunday to Monday. Equal endpoints are invalid for a weekly window unless its reviewed definition uses an explicit all-day flag. |
-| Holiday, seasonal and date exception | Select holidays using the versioned jurisdiction calendar, with exceptions and seasonal boundaries on the actual local civil date, including overnight continuations. A rule-specific exception explicitly adds, subtracts or replaces a window. An unsupported start-day exception or unresolved calendar membership yields `CALENDAR_UNRESOLVED` where it may affect the outcome. |
-| Effective start/end | Date-only reviewed bounds are interpreted as inclusive start date and exclusive end date in the jurisdiction, tested against each instant's actual local date. Absolute effective bounds use instants and are also half-open. Exclude instants outside the bounds. An absent bound must be explicitly reviewed as open-ended; an unknown bound cannot prove coverage. |
-| Temporary orders | Intersect the reviewed absolute `[start, end)` with the stay, effective period and applicability. Require explicit order effective bounds, observation time and reviewed freshness at assessment. Unsupported ambiguous local bounds, missing observations, stale evidence or an absence of new reports cannot establish restriction absence or permission. An intersecting decisive restriction prohibits the full requested stay. |
-| Spring-forward gap | A recurring civil window applies to the set of real instants whose local labels satisfy it. Skipped labels map to no instants, so a restriction entirely in a skipped hour contributes no overlap. A straddling window includes its real portions on either side. A request timestamp without an offset is invalid even if that wall label would otherwise look plausible. |
-| Fall-back repeated hour | A recurring civil window selects both real occurrences of matching labels. Compute their UTC intervals separately and do not bridge a wall-clock subwindow between folds. An offset-bearing request chooses exact instants. If reviewed evidence prescribes a different fold convention and normalization cannot implement it, classify the affected window as unsupported. |
-| Maximum stay | Use elapsed duration for the proposed continuous-stay rule. For a reviewed applicable maximum, exactly the cap is permissible absent other restrictions, while elapsed time beyond it proves a violation when all applicable exceptions are resolved. Time outside a rule window counts or resets only as its reviewed accumulation/reset semantics specify. Initial support can limit this to a cap applying throughout the stay. Missing prior dwell/re-parking facts or unsupported partial-window accumulation yield `STAY_HISTORY_UNRESOLVED`. |
-| Overlap and boundaries | A positive-length intersection can decide a prohibition. Ending exactly when a restriction starts or starting exactly when it ends does not overlap it. Effective dates, permission and exemption ends, permit expiry and calendar boundaries split the stay without gaps or double counting. |
+| Jurisdiction or timezone binding unresolved, with an otherwise safely evaluable request that needs civil interpretation | `COMPLETE / UNKNOWN` with `JURISDICTION_UNRESOLVED`. Return a whole-stay unknown interval with no civil proof. |
+| Zone identified, but pinned bytes, version or digest missing, inconsistent or corrupt | `FAILED / UNKNOWN` with `SNAPSHOT_INVALID`. Return no intervals or partial proof. |
 
-Implement civil windows by intersecting each local-label range with UTC offset segments for the pinned timezone, then projecting to UTC and clipping to the requested/effective intervals. Adding 24 elapsed hours to find a next local date or mapping just the two wall endpoints would give incorrect DST behavior. Sort and normalize interval boundaries before evaluating them.
+Validate applicable request and input bounds before returning an unresolved result. A request composed solely of absolute inputs can enter the PR-01 path directly.
+
+#### D1-B and D1-C — Local labels and exact UTC projection
+
+- A recurring window selects the real instants whose local labels satisfy the rule. Weekdays are numeric, from Sunday (`0`) through Saturday (`6`). Wall-clock start is inclusive and end exclusive. Use a distinct all-day marker for the span from local midnight to the following local midnight. Equal clock endpoints without that marker are an unsupported shape.
+- A start clock later than the end clock anchors an overnight window to the **starting** local weekday. Its continuation belongs to that occurrence across Sunday-to-Monday and month or year rollover. Advance dates with calendar arithmetic.
+- Date-only effective and seasonal ranges use inclusive start and exclusive end **local dates**. In this synthetic profile these ranges and dated exceptions apply to the actual local date of each piece, including an overnight continuation. The anchor still determines weekly recurrence. UTC conversion preserves half-open endpoints and exact precision.
+- Split the stay into spans of constant UTC offset from the pinned zone. Intersect the rule's civil labels with the labels exposed by each span, project each nonempty intersection to UTC using that span's offset, then clip to the stay. Calendar pieces, UTC offset spans and their intersections can be shorter or longer than a nominal civil day. A nonexistent spring-forward label has no preimage. Repeated fall-back labels contribute both UTC occurrences. Preserve separate projected pieces at offset changes and any intervening uncovered interval.
+- A conditional schedule emits a rule window when the fixture establishes its applicability. A known nonapplicable condition emits none. Preserve potentially applicable windows with unknown conditions, unsupported shapes or unresolved effects as unresolved evidence for their possible overlap, with `UNSUPPORTED_RULE` when applicable. Use the whole stay when no narrower bound is established. A real source's fold, gap, overnight or date interpretation that differs from the synthetic policy requires reviewed source-specific treatment in PR-03 or later.
+
+Generated pieces must retain the original rule and evidence provenance. The merged core uses one absolute window per rule and rejects different windows under the same rule ID. Give distinct pieces stable, distinct fixture identities and preserve the binding to their original rule. Keep each applicable assumption and any explicit fixture permission condition bound to the corresponding normalized restriction. The exact encoding of fragment identifiers is an implementation review detail.
+
+#### D1-D — Versioned synthetic calendars
+
+A calendar-dependent fixture explicitly supplies the synthetic calendar identity, version and content digest, with dated membership and reviewed fixture assumptions. Resolve only bounded, explicitly defined holiday and date exceptions. A supported exception binds one rule and one actual local date and either adds an explicit window, removes a specified window, or replaces the rule's windows for that date with specified windows. Apply the operation only over its reviewed scope. Conflicting operations require a resolved fixture disposition.
+
+Treat unknown holiday membership, unsupported anchoring and absent or unsupported calendar versions as `CALENDAR_UNRESOLVED` over the intervals they might affect. Preserve potentially relevant restrictions as unresolved evidence. A missing date entry never proves ordinary-day membership when holiday status controls the calculation. An integrity mismatch in a supplied supported calendar is `SNAPSHOT_INVALID`. Real government calendars and enforcement exceptions require later review.
+
+#### D1-E — Continuous elapsed stay
+
+Support a positive synthetic elapsed cap only when it applies throughout the requested stay, the continuous-occupancy start is an explicit absolute instant at or before the request start, and scoped fixture evidence establishes applicability, exceptions and that the elapsed time from that start counts. The occupancy anchor is a separate fact from request arrival. The supported fixture needs no additional prior dwell, re-parking history, partial-window accumulation or reset logic.
+
+Compute expiration as the established occupancy start plus the elapsed cap, with checked instant arithmetic. Ending exactly at expiration is within the cap. When the stay extends beyond expiration, emit the restriction over `[max(request start, expiration), request end)`. Record `MAX_STAY_EXCEEDED` and preserve the expiration boundary when it falls inside the request. The earlier interval gets permission only through the usual independent permission and coverage proof. When the anchor, prior history or accumulation/reset semantics could change the conclusion, preserve `STAY_HISTORY_UNRESOLVED` and `UNKNOWN` for the affected proof. The normal treatment of any independent decisive restriction still applies.
+
+Carry normalization reasons and their source references on the affected intervals. The civil stage supplies absolute inputs and diagnostics. The existing core still determines interval and whole-stay legal outcomes.
+
+#### D1-F — Bounded normalization
+
+Preflight typed raw civil inputs and calendar entries before copying, sorting or expanding them. Count duplicate declarations and exceptions before filtering. Validate the requested duration and count absolute inputs against their existing limits. For each UTC offset span, derive the first and last local dates actually touched by the half-open stay, including the local date of its last included instant. Check the resulting civil date envelope with at most one extra preceding local date for overnight anchors. Bound offset iteration and require monotonic progress between transitions.
+
+The following inclusive PR-02 ceilings are bounded **candidates**, pending approval before implementation. They express admission limits, with no measured time or memory claim.
+
+| Pre-expansion work | Candidate ceiling |
+|---|---:|
+| Raw civil declarations across the request and fixture | 256 |
+| Supplied calendar entries across memberships and exceptions | 256 |
+| Civil anchor dates in the full checked envelope, including overnight lookback | 10 |
+| UTC offset spans visited for the stay | 32 |
+| Pinned timezone input per evaluation | 256 KiB |
+| Intermediate window entries held during calendar operations | 1,024 |
+
+Inspect timezone byte length before hashing and loading. Iterate admitted dates and offset spans without materializing their Cartesian product. Budget intermediate calendar splits before allocation and retain at most 1,024 pending window entries at any time. Charge each generated UTC window, including unresolved fragments and duplicates, when it is produced against the core's **shared 1,024 raw temporal windows** remaining after absolute inputs are counted. Check remaining allowance before appending and before allocating output proportional to a count. Apply the same checks to duplicated reference entries and materialized rule pieces so the complete fixture respects the existing 2,048 evidence-reference and 256 rule caps. Each retained window contributes at most two endpoint entries. The 2,050 endpoint and 1,024 unique-boundary limits still apply, including the stay endpoints.
+
+Use checked subtraction, increments and instant/date arithmetic. A work-budget excess yields `FAILED / UNKNOWN / EVALUATION_LIMIT` without interval results or legal proof. Reject the batch before evaluation if any date, span, split or generated entry exceeds the admitted work. Truncation, skipped unprocessed dates or an early legal result would violate the contract. A malformed or inconsistent fixture within work limits follows the snapshot validation failure path.
 
 ## Applicability, authority and full-stay decision
 
